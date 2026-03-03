@@ -1,3 +1,4 @@
+// Basic F1R3Pix ideas
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 // ─── Constants & Config ────────────────────────────────────────────
