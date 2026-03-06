@@ -1,7 +1,7 @@
 {
-  "name": "@f1r3fly/f1r3beat-shard",
+  "name": "@f1r3fly/f1r3skein-shard",
   "version": "0.1.0",
-  "description": "F1R3Beat shard integration — rholang contracts and gRPC client",
+  "description": "F1R3Skein shard integration — rholang contracts and gRPC client",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
