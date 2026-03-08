@@ -1,0 +1,1240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F1R3SideChat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600;1,700&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+<style>
+/* ── DESIGN TOKENS ─────────────────────────────────────────── */
+:root {
+  --bg:       #09090f;
+  --bg1:      #0d0d16;
+  --bg2:      #111120;
+  --bg3:      #161628;
+  --border:   #1c1c30;
+  --border2:  #252540;
+  --text:     #cccce0;
+  --text2:    #7070a0;
+  --text3:    #404060;
+  --fire:     #ff4518;
+  --fire2:    #ff6640;
+  --ember:    #ffaa30;
+  --cyan:     #00d8ff;
+  --violet:   #9b6fff;
+  --green:    #00e070;
+  --red:      #ff4466;
+  --serif:    'Playfair Display', Georgia, serif;
+  --mono:     'DM Mono', 'JetBrains Mono', monospace;
+  --sans:     'DM Sans', system-ui, sans-serif;
+  --nav-h:    50px;
+  --sidebar-w: 230px;
+  --kibitz-w:  310px;
+  --radius:    4px;
+}
+
+/* ── RESET ──────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; line-height: 1.5; }
+button { cursor: pointer; background: none; border: none; font-family: inherit; }
+textarea, input { font-family: inherit; background: none; border: none; outline: none; color: inherit; }
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+/* ── ANIMATIONS ─────────────────────────────────────────────── */
+@keyframes fadeUp { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.3} }
+@keyframes shimmer{ 0%{opacity:.4} 50%{opacity:.8} 100%{opacity:.4} }
+@keyframes slideIn{ from{transform:translateX(12px);opacity:0} to{transform:translateX(0);opacity:1} }
+@keyframes glow   { 0%,100%{box-shadow:0 0 4px rgba(255,69,24,.3)} 50%{box-shadow:0 0 10px rgba(255,69,24,.6)} }
+
+/* ── NAV ────────────────────────────────────────────────────── */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+  height: var(--nav-h);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+}
+.nav-logo {
+  font-family: var(--mono); font-size: 15px; font-weight: 500; letter-spacing:.04em;
+  display: flex; align-items: center; gap: 1px;
+}
+.nav-logo .f { color: var(--fire); }
+.nav-logo .s { color: var(--text2); }
+.nav-logo .c { color: var(--text); }
+
+.nav-center {
+  display: flex; gap: 4px;
+}
+.nav-tab {
+  font-family: var(--mono); font-size: 11px; letter-spacing:.05em;
+  padding: 5px 12px; border-radius: var(--radius);
+  color: var(--text3); transition: all .15s;
+}
+.nav-tab:hover  { color: var(--text2); background: var(--bg2); }
+.nav-tab.active { color: var(--fire2); background: rgba(255,69,24,.08); }
+
+.nav-right {
+  display: flex; align-items: center; gap: 14px;
+}
+.token-chip {
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,170,48,.08); border: 1px solid rgba(255,170,48,.25);
+  border-radius: var(--radius); padding: 4px 10px;
+  font-family: var(--mono); font-size: 12px; color: var(--ember);
+}
+.token-chip svg { flex-shrink: 0; }
+
+/* ── LAYOUT ─────────────────────────────────────────────────── */
+.layout {
+  position: fixed;
+  top: var(--nav-h); left: 0; right: 0; bottom: 0;
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr var(--kibitz-w);
+}
+
+/* ── SIDEBAR ────────────────────────────────────────────────── */
+.sidebar {
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  background: var(--bg1);
+}
+.sidebar-section-label {
+  font-family: var(--mono); font-size: 9px; letter-spacing:.16em;
+  text-transform: uppercase; color: var(--text3);
+  padding: 16px 16px 6px;
+}
+.story-row {
+  padding: 9px 16px; border-left: 2px solid transparent;
+  cursor: pointer; transition: all .12s;
+  position: relative;
+}
+.story-row:hover  { background: var(--bg2); border-left-color: var(--border2); }
+.story-row.active { background: var(--bg3); border-left-color: var(--fire); }
+.story-row-title  { font-family: var(--serif); font-size: 13px; font-style: italic; margin-bottom: 3px; line-height: 1.3; }
+.story-row-meta   { font-family: var(--mono); font-size: 10px; color: var(--text3); display:flex; align-items:center; gap:5px; }
+.live-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2s ease-in-out infinite; flex-shrink:0; }
+.paused-dot { width:6px; height:6px; border-radius:50%; background:var(--text3); flex-shrink:0; }
+
+.new-story-btn {
+  margin: 10px 12px 14px;
+  padding: 8px; border-radius: var(--radius);
+  border: 1px dashed var(--border2); color: var(--text3);
+  font-family: var(--mono); font-size: 11px; letter-spacing:.04em;
+  transition: all .15s; width: calc(100% - 24px);
+}
+.new-story-btn:hover { border-color: var(--fire2); color: var(--fire2); background: rgba(255,69,24,.04); }
+
+/* ── MAIN FEED ──────────────────────────────────────────────── */
+.feed { overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
+.feed-inner { padding: 28px 36px; max-width: 720px; margin: 0 auto; width: 100%; display:flex; flex-direction:column; gap:0; }
+
+/* Story header */
+.story-header { margin-bottom: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border); animation: fadeUp .3s ease; }
+.arc-tag { font-family:var(--mono); font-size:10px; letter-spacing:.14em; color:var(--fire2); text-transform:uppercase; margin-bottom:8px; }
+.story-title-h { font-family:var(--serif); font-size:28px; font-style:italic; line-height:1.2; margin-bottom:8px; }
+.story-byline  { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-family:var(--mono); font-size:11px; color:var(--text2); }
+.byline-sep { color: var(--text3); }
+.applause-count { color:var(--text3); }
+.tier-badge {
+  display:inline-flex; align-items:center; gap:4px;
+  border-radius:3px; padding:2px 7px;
+  font-family:var(--mono); font-size:10px; font-weight:500; letter-spacing:.04em;
+}
+.tier-ai     { background:rgba(155,111,255,.1); border:1px solid rgba(155,111,255,.28); color:var(--violet); }
+.tier-driver { background:rgba(0,216,255,.07);  border:1px solid rgba(0,216,255,.22);   color:var(--cyan);   }
+.tier-meta   { background:rgba(255,170,48,.08); border:1px solid rgba(255,170,48,.22);  color:var(--ember);  }
+
+/* Beat */
+.beat {
+  padding: 18px 0 20px;
+  border-bottom: 1px solid var(--border);
+  animation: fadeUp .35s ease;
+  position: relative;
+}
+.beat.driver-beat { border-left: 2px solid rgba(0,216,255,.22); padding-left:16px; margin-left:-18px; }
+.beat.ai-beat     { border-left: 2px solid rgba(155,111,255,.22); padding-left:16px; margin-left:-18px; }
+
+.beat-author {
+  display:flex; align-items:center; gap:7px;
+  font-family:var(--mono); font-size:11px; color:var(--text2);
+  margin-bottom:11px;
+}
+.beat-seq { margin-left:auto; font-size:10px; color:var(--text3); }
+.char-label { font-weight:500; }
+.ai-label   { color:var(--violet); }
+.driver-label { color:var(--cyan); }
+
+.beat-text {
+  font-family: var(--serif);
+  font-size: 16.5px;
+  line-height: 1.78;
+  color: var(--text);
+  letter-spacing: .008em;
+}
+.beat-text em      { color: var(--text2); font-style: italic; }
+.beat-text .dlg    { color: #ddd8ff; font-style: italic; }
+
+.beat-reactions {
+  display:flex; align-items:center; gap:12px;
+  margin-top:13px;
+}
+.react-btn {
+  font-family:var(--mono); font-size:11px; color:var(--text3);
+  padding:3px 7px; border-radius:3px; transition:all .12s;
+  display:flex; align-items:center; gap:4px;
+}
+.react-btn:hover  { color:var(--fire2); background:rgba(255,100,64,.07); }
+.react-btn.active { color:var(--fire); }
+.tip-btn {
+  margin-left:auto;
+  font-family:var(--mono); font-size:11px;
+  color:var(--text3); padding:3px 9px; border-radius:3px;
+  border: 1px solid var(--border); transition:all .12s;
+}
+.tip-btn:hover { border-color:var(--ember); color:var(--ember); background:rgba(255,170,48,.05); }
+
+/* Live composing indicator */
+.composing {
+  display:flex; align-items:center; gap:8px;
+  font-family:var(--mono); font-size:11px; color:var(--text3);
+  padding: 12px 0;
+}
+.composing-dots span {
+  display:inline-block; width:4px; height:4px; border-radius:50%;
+  background:var(--text3); margin:0 1px;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.composing-dots span:nth-child(2) { animation-delay:.2s; }
+.composing-dots span:nth-child(3) { animation-delay:.4s; }
+
+/* ── KIBITZ RAIL ────────────────────────────────────────────── */
+.kibitz-panel {
+  border-left: 1px solid var(--border);
+  background: var(--bg1);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+.kibitz-header {
+  padding: 13px 16px; border-bottom: 1px solid var(--border);
+  display:flex; align-items:center; justify-content:space-between;
+  flex-shrink: 0;
+}
+.kibitz-title { font-family:var(--mono); font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--text3); }
+.kibitz-toggle { font-family:var(--mono); font-size:11px; color:var(--text3); transition:color .12s; }
+.kibitz-toggle:hover { color:var(--text2); }
+
+.kibitz-scroll { flex:1; overflow-y:auto; }
+
+/* Kibitz note */
+.kibitz-note {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  transition: background .1s; cursor: default;
+  animation: slideIn .25s ease;
+}
+.kibitz-note:hover { background: var(--bg2); }
+.kibitz-note-meta  { display:flex; align-items:center; gap:6px; margin-bottom:6px; font-family:var(--mono); font-size:10px; color:var(--text3); }
+.kibitz-anchor {
+  font-family:var(--mono); font-size:10px; color:var(--text3);
+  background:var(--bg3); border:1px solid var(--border); border-radius:2px;
+  padding:2px 6px; margin-bottom:5px; display:block;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;
+}
+.kibitz-text { font-family:var(--mono); font-size:12px; line-height:1.58; color:var(--text2); }
+.kibitz-actions { display:flex; align-items:center; gap:8px; margin-top:8px; }
+.vote-btn {
+  font-family:var(--mono); font-size:10px; color:var(--text3);
+  border:1px solid var(--border); border-radius:3px; padding:2px 8px;
+  transition:all .12s;
+}
+.vote-btn:hover   { border-color:var(--text2); color:var(--text2); }
+.vote-btn.up-voted { color:var(--green); border-color:rgba(0,224,112,.3); }
+.kib-tip-btn { margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--text3); transition:color .12s; }
+.kib-tip-btn:hover { color:var(--ember); }
+
+/* What-if card */
+.whatif-card {
+  margin: 8px 16px;
+  background:var(--bg2); border:1px dashed var(--border2); border-radius:4px;
+  padding:10px 13px; animation: slideIn .25s ease;
+}
+.whatif-label { font-family:var(--mono); font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ember); margin-bottom:5px; }
+.whatif-text  { font-family:var(--mono); font-size:12px; color:var(--text2); font-style:italic; line-height:1.55; }
+.whatif-actions { display:flex; gap:6px; margin-top:8px; }
+
+/* ── PARTICIPATION FOOTER ───────────────────────────────────── */
+.participate {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg1);
+}
+.participate-tabs {
+  display:flex; gap:2px; padding:10px 14px 0;
+}
+.p-tab {
+  font-family:var(--mono); font-size:10px; letter-spacing:.05em;
+  padding:4px 10px; border-radius:3px;
+  border:1px solid var(--border); color:var(--text3); transition:all .12s;
+}
+.p-tab:hover  { color:var(--text2); border-color:var(--border2); }
+.p-tab.active { color:var(--fire); border-color:rgba(255,69,24,.4); background:rgba(255,69,24,.06); }
+
+.p-tier-info {
+  margin: 8px 14px;
+  background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius);
+  padding:9px 12px; font-family:var(--mono); font-size:11px; color:var(--text2); line-height:1.55;
+}
+.p-tier-title { color:var(--cyan); margin-bottom:3px; font-weight:500; font-size:11px; }
+.p-tier-cost  { color:var(--ember); }
+
+.p-input-row { padding: 0 14px 10px; }
+.p-textarea {
+  width:100%; background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius);
+  padding:9px 11px; font-family:var(--mono); font-size:12px; color:var(--text);
+  resize:none; height:58px; line-height:1.5; transition:border-color .12s;
+}
+.p-textarea:focus { border-color:var(--border2); }
+.p-textarea::placeholder { color:var(--text3); font-style:italic; }
+.p-actions { display:flex; justify-content:space-between; align-items:center; margin-top:7px; }
+.p-cost-tag { font-family:var(--mono); font-size:10px; }
+.p-cost-free   { color:var(--green); }
+.p-cost-tokens { color:var(--ember); }
+.p-submit {
+  font-family:var(--mono); font-size:11px; letter-spacing:.04em;
+  padding:5px 14px; border-radius:var(--radius);
+  background:rgba(255,69,24,.13); border:1px solid rgba(255,69,24,.35);
+  color:var(--fire2); transition:all .12s;
+}
+.p-submit:hover { background:rgba(255,69,24,.22); border-color:rgba(255,69,24,.55); color:var(--fire); }
+
+/* ── MODALS ──────────────────────────────────────────────────── */
+.modal-overlay {
+  position:fixed; inset:0; z-index:1000;
+  background:rgba(0,0,0,.75); backdrop-filter:blur(4px);
+  display:flex; align-items:center; justify-content:center;
+  animation: fadeUp .2s ease;
+}
+.modal {
+  background:var(--bg2); border:1px solid var(--border2); border-radius:6px;
+  padding:28px 32px; width:460px; max-width:90vw; max-height:80vh; overflow-y:auto;
+  animation: fadeUp .2s ease;
+}
+.modal-title { font-family:var(--mono); font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--fire2); margin-bottom:18px; }
+.modal-field { margin-bottom:14px; }
+.modal-label { font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--text3); margin-bottom:5px; display:block; }
+.modal-input {
+  width:100%; background:var(--bg3); border:1px solid var(--border2); border-radius:var(--radius);
+  padding:8px 11px; font-family:var(--mono); font-size:12px; color:var(--text);
+  transition:border-color .12s;
+}
+.modal-input:focus { border-color:var(--fire2); outline:none; }
+.modal-textarea { resize:vertical; min-height:80px; }
+.modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
+.modal-cancel {
+  font-family:var(--mono); font-size:12px; padding:7px 16px; border-radius:var(--radius);
+  border:1px solid var(--border2); color:var(--text2); transition:all .12s;
+}
+.modal-cancel:hover { border-color:var(--text2); }
+.modal-confirm {
+  font-family:var(--mono); font-size:12px; padding:7px 16px; border-radius:var(--radius);
+  background:rgba(255,69,24,.15); border:1px solid rgba(255,69,24,.4); color:var(--fire2);
+  transition:all .12s;
+}
+.modal-confirm:hover { background:rgba(255,69,24,.25); }
+
+/* ── TOAST ───────────────────────────────────────────────────── */
+.toast-container { position:fixed; bottom:20px; right:20px; z-index:2000; display:flex; flex-direction:column; gap:8px; }
+.toast {
+  font-family:var(--mono); font-size:12px;
+  padding:10px 16px; border-radius:var(--radius);
+  background:var(--bg3); border:1px solid var(--border2); color:var(--text);
+  animation:slideIn .2s ease; max-width:280px;
+}
+.toast.success { border-color:rgba(0,224,112,.4); color:var(--green); }
+.toast.error   { border-color:rgba(255,68,102,.4); color:var(--red); }
+.toast.info    { border-color:rgba(0,216,255,.3);  color:var(--cyan); }
+
+/* ── IDENTITY PANEL ─────────────────────────────────────────── */
+.identity-panel {
+  font-family:var(--mono); font-size:12px;
+  padding:16px 20px; display:flex; flex-direction:column; gap:10px;
+}
+.identity-row { display:flex; align-items:center; gap:10px; }
+.identity-addr { font-size:11px; color:var(--text2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.identity-balance { color:var(--ember); }
+
+/* ── SIGIL ───────────────────────────────────────────────────── */
+.sigil { border-radius:50%; flex-shrink:0; display:block; }
+
+/* ── EMPTY STATE ─────────────────────────────────────────────── */
+.empty-state {
+  flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:var(--text3); font-family:var(--mono); font-size:12px; gap:12px; padding:40px;
+  text-align:center;
+}
+.empty-fire { font-size:36px; opacity:.4; }
+
+/* ── LOADING ─────────────────────────────────────────────────── */
+.loading-beat {
+  padding: 20px 0; display:flex; flex-direction:column; gap:10px;
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--bg2) 0%, var(--bg3) 50%, var(--bg2) 100%);
+  background-size: 200% 100%;
+  border-radius:3px; animation: shimmer 1.5s ease-in-out infinite;
+}
+</style>
+</head>
+<body>
+
+<!-- ── NAV ──────────────────────────────────────────────────── -->
+<nav class="nav">
+  <div class="nav-logo">
+    <span class="f">F1R3</span><span class="s">Side</span><span class="c">Chat</span>
+  </div>
+
+  <div class="nav-center">
+    <button class="nav-tab active" data-tab="live">Live</button>
+    <button class="nav-tab" data-tab="discover">Discover</button>
+    <button class="nav-tab" data-tab="archive">Archive</button>
+  </div>
+
+  <div class="nav-right">
+    <div class="token-chip" id="tokenChip">
+      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+        <circle cx="5" cy="5" r="4" stroke="#ffaa30" stroke-width="1.4"/>
+        <path d="M5 2.5v2.5l1.5 1" stroke="#ffaa30" stroke-width="1" stroke-linecap="round"/>
+      </svg>
+      <span id="balanceDisplay">— F1R3Cap</span>
+    </div>
+    <div id="navSigil"></div>
+  </div>
+</nav>
+
+<!-- ── LAYOUT ────────────────────────────────────────────────── -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section-label">Live Stories</div>
+    <!-- populated by JS -->
+    <button class="new-story-btn" id="newStoryBtn">+ new story thread</button>
+    <div class="sidebar-section-label">Archived</div>
+    <div id="archivedList"></div>
+  </aside>
+
+  <!-- MAIN FEED -->
+  <main class="feed" id="feed">
+    <div class="feed-inner" id="feedInner">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-fire">🔥</div>
+        <div>Select a story to read</div>
+        <div style="color:var(--text3);font-size:11px;">or start a new thread</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- KIBITZ RAIL -->
+  <aside class="kibitz-panel" id="kibitzPanel">
+    <div class="kibitz-header">
+      <span class="kibitz-title">Kibitz Rail</span>
+      <button class="kibitz-toggle" id="kibitzToggle">hide ×</button>
+    </div>
+    <div class="kibitz-scroll" id="kibitzScroll">
+      <!-- populated by JS -->
+    </div>
+    <div class="participate" id="participateFooter">
+      <div class="participate-tabs" id="pTabs">
+        <button class="p-tab active" data-ptab="kibitz">kibitz</button>
+        <button class="p-tab" data-ptab="drive">drive</button>
+        <button class="p-tab" data-ptab="meta">meta-author</button>
+      </div>
+      <div class="p-tier-info" id="tierInfo">
+        <div class="p-tier-title">Tier 1 — Kibitz</div>
+        <div>Leave comments anchored to beats. Suggest alternative plot moves. <span class="p-tier-cost">Free.</span></div>
+      </div>
+      <div class="p-input-row">
+        <textarea class="p-textarea" id="pTextarea" placeholder="Comment on a beat, or post a 'what if…' suggestion…"></textarea>
+        <div class="p-actions">
+          <span class="p-cost-tag p-cost-free" id="pCostTag">⬡ free</span>
+          <button class="p-submit" id="pSubmit">post kibitz →</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ── TOASTS ─────────────────────────────────────────────────── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ── MODALS ─────────────────────────────────────────────────── -->
+<div id="modalContainer"></div>
+
+<script>
+// ╔══════════════════════════════════════════════════════════════╗
+// ║  F1R3SideChat — UI Engine                                   ║
+// ║  All shard calls stubbed with realistic mock data;          ║
+// ║  swap stubs for real shardClient.js calls for production.   ║
+// ╚══════════════════════════════════════════════════════════════╝
+
+// ── IDENTITY ─────────────────────────────────────────────────
+const IDENTITY_KEY = 'f1r3sidechat:identity';
+
+function generateP256KeyPair() {
+  // Stub — production: use elliptic P-256
+  const randomHex = () => Array.from(crypto.getRandomValues(new Uint8Array(32)))
+    .map(b => b.toString(16).padStart(2,'0')).join('');
+  const priv = randomHex();
+  const pub  = '04' + randomHex() + randomHex();
+  return { privateKeyHex: priv, publicKeyHex: pub };
+}
+
+function pubKeyToRevAddress(pubHex) {
+  // Stub — derive rev address from pubkey bytes
+  const seed = pubHex.slice(2, 42);
+  return '1111' + seed.slice(0, 32);
+}
+
+function getSigilStyle(pubKeyHex) {
+  const bytes = pubKeyHex.slice(2).match(/.{2}/g).map(h => parseInt(h, 16));
+  const hue   = ((bytes[0] << 8 | bytes[1]) % 360);
+  const shape = bytes[2] % 4;
+  return { hue, shape };
+}
+
+function makeSigilSVG(pubKeyHex, size = 32) {
+  const { hue, shape } = getSigilStyle(pubKeyHex);
+  const r  = size / 2, cx = r, cy = r;
+  const h  = `hsl(${hue},75%,62%)`;
+  const bg = `hsl(${hue},50%,12%)`;
+  let inner = '';
+  if (shape === 0) {
+    const pts = Array.from({length:6},(_,i)=>{const a=(Math.PI/3)*i-Math.PI/6; return `${(cx+r*.7*Math.cos(a)).toFixed(1)},${(cy+r*.7*Math.sin(a)).toFixed(1)}`;}).join(' ');
+    inner = `<polygon points="${pts}" fill="none" stroke="${h}" stroke-width="1.4"/>`;
+  } else if (shape === 1) {
+    inner = `<polygon points="${cx},${cy-r*.66} ${cx+r*.66},${cy} ${cx},${cy+r*.66} ${cx-r*.66},${cy}" fill="none" stroke="${h}" stroke-width="1.4"/>`;
+  } else if (shape === 2) {
+    const pts = [0,1,2].map(i=>{const a=Math.PI*2/3*i-Math.PI/2; return `${(cx+r*.7*Math.cos(a)).toFixed(1)},${(cy+r*.7*Math.sin(a)).toFixed(1)}`;}).join(' ');
+    inner = `<polygon points="${pts}" fill="none" stroke="${h}" stroke-width="1.4"/>`;
+  } else {
+    inner = `<circle cx="${cx}" cy="${cy}" r="${r*.62}" fill="none" stroke="${h}" stroke-width="1.4"/>
+             <line x1="${cx}" y1="${cy-r*.56}" x2="${cx}" y2="${cy+r*.56}" stroke="${h}" stroke-width="1"/>
+             <line x1="${cx-r*.56}" y1="${cy}" x2="${cx+r*.56}" y2="${cy}" stroke="${h}" stroke-width="1"/>`;
+  }
+  const dotR = r * 0.22;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="sigil">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="${bg}"/>
+    ${inner}
+    <circle cx="${cx}" cy="${cy}" r="${dotR}" fill="${h}" opacity=".7"/>
+  </svg>`;
+}
+
+let identity = (() => {
+  try {
+    const stored = localStorage.getItem(IDENTITY_KEY);
+    if (stored) return JSON.parse(stored);
+  } catch {}
+  const kp  = generateP256KeyPair();
+  const id  = { ...kp, revAddress: pubKeyToRevAddress(kp.publicKeyHex), displayName: 'anon' };
+  try { localStorage.setItem(IDENTITY_KEY, JSON.stringify(id)); } catch {}
+  return id;
+})();
+
+let balance = 340; // stub — fetch from shard in production
+
+function renderNavIdentity() {
+  document.getElementById('navSigil').innerHTML = makeSigilSVG(identity.publicKeyHex, 28);
+  document.getElementById('balanceDisplay').textContent = balance + ' F1R3Cap';
+}
+
+// ── MOCK DATA ─────────────────────────────────────────────────
+
+const MOCK_STORIES = [
+  {
+    id: 'story_whitmore', title: 'The Whitmore Murders', status: 'active',
+    arcLabel: 'Arc III · Beat 8 of ~20', readers: 14,
+    aiPersona: 'Cassiel', authorName: 'leithaus',
+    authorPub: '04aabb',
+    applause: 142, hearts: 38,
+  },
+  {
+    id: 'story_cartography', title: 'A Cartography of Ghosts', status: 'active',
+    arcLabel: 'Arc I · Beat 3 of ~15', readers: 8,
+    aiPersona: 'Mnemosyne', authorName: 'tide_circuit',
+    authorPub: '04ccdd',
+    applause: 31, hearts: 12,
+  },
+  {
+    id: 'story_consul', title: 'The Consul of Last Resort', status: 'paused',
+    arcLabel: 'Arc II · paused', readers: 0,
+    aiPersona: 'Vex', authorName: 'phosreed',
+    authorPub: '04eeff',
+    applause: 88, hearts: 20,
+  },
+  {
+    id: 'story_null', title: 'Ballad of the Null Meridian', status: 'complete',
+    arcLabel: 'Complete · 3 arcs', readers: 0,
+    aiPersona: 'Axiom', authorName: 'inkwell_crow',
+    authorPub: '04aacc',
+    applause: 410, hearts: 97,
+  },
+  {
+    id: 'story_victoria', title: 'Victoria & Balthazar: The Pemberton Affair', status: 'complete',
+    arcLabel: 'Complete · 2 arcs', readers: 0,
+    aiPersona: 'Balthazar', authorName: 'leithaus',
+    authorPub: '04aabb',
+    applause: 287, hearts: 71,
+  },
+];
+
+const MOCK_BEATS = {
+  story_whitmore: [
+    {
+      id: 'beat_001', seq: 5, arcId: 'arc_3',
+      authorType: 'human', authorName: 'leithaus', authorPub: '04aabb',
+      charName: null,
+      content: `Victoria found the second glove at half past midnight, tucked behind the false panel in the billiard room—the one Whitmore himself had shown her three years ago, before he understood what she was. The leather was still damp. Someone had been wearing it recently, or had wanted her to think so.\n\nShe lit the second lamp and held both gloves up against the window, comparing the seams.`,
+      applause: 12, hearts: 4, horror: 1,
+    },
+    {
+      id: 'beat_002', seq: 6, arcId: 'arc_3',
+      authorType: 'ai', authorName: 'Cassiel', authorPub: 'ai',
+      charName: null,
+      content: `Balthazar appeared in the doorway, his coat still carrying the smell of the river. He did not ask about the gloves. He watched her, and something in his stillness said he had already worked it out—or thought he had.\n\n<span class="dlg">"You'll want to look at the cufflinks next,"</span> he said, at last. <span class="dlg">"The pattern is a maker's mark. Flemish, probably. I know a man in Antwerp."</span>`,
+      applause: 19, hearts: 7, horror: 3,
+    },
+    {
+      id: 'beat_003', seq: 7, arcId: 'arc_3',
+      authorType: 'driver', authorName: 'rheaknight', authorPub: '04ffaa',
+      charName: 'Inspector Morrow',
+      content: `The Inspector cleared his throat from the corridor outside, loudly enough that they would know he had been there some time. He stepped in without being invited—his usual manner—and registered the two lamps, the gloves, and Balthazar's river-damp coat with one slow sweep of his eyes.\n\n<span class="dlg">"The household staff are asleep, Miss Alderton. Or so they claim."</span> He did not look at her when he said it. He was looking at the gloves. <span class="dlg">"Innocent people seldom need to claim anything."</span>`,
+      applause: 8, hearts: 11, horror: 0,
+    },
+  ],
+};
+
+const MOCK_KIBITZ = {
+  story_whitmore: [
+    {
+      id: 'kib_001', type: 'whatif', authorPub: '04gggg', authorName: 'sable_margin',
+      anchor: '', content: 'The cufflinks belong to Victoria\'s brother — the one she told Balthazar was abroad.',
+      upvotes: 14, downvotes: 2, tips: 0, userVoted: null,
+    },
+    {
+      id: 'kib_002', type: 'note', authorPub: '04hhhh', authorName: 'inkwell_crow',
+      anchor: '"The pattern is a maker\'s mark. Flemish…"',
+      content: 'Cassiel flagging Antwerp so early feels like a planted red herring. Whitmore had Belgian connections from the Congo trade. This is going to loop back.',
+      upvotes: 9, downvotes: 0, tips: 0, userVoted: null,
+    },
+    {
+      id: 'kib_003', type: 'note', authorPub: '04iiii', authorName: 'sable_margin',
+      anchor: '"Innocent people seldom need to claim…"',
+      content: 'rheaknight absolutely nailed Morrow\'s voice — that last line is exactly how he would have said it. Better than any earlier AI versions of him.',
+      upvotes: 22, downvotes: 1, tips: 5, userVoted: 'up',
+    },
+    {
+      id: 'kib_004', type: 'meta', authorPub: '04jjjj', authorName: 'phosphor_reed',
+      anchor: '',
+      content: 'Pitched in the meta-log: Victoria needs a moment alone before arc end where she realises she\'s being watched — not by Morrow, by someone who knows about the panel. leithaus and Cassiel reviewing now.',
+      upvotes: 31, downvotes: 0, tips: 0, userVoted: null,
+      isMeta: true,
+    },
+  ],
+};
+
+// ── STATE ─────────────────────────────────────────────────────
+let state = {
+  activeStoryId: null,
+  activePTab:    'kibitz',
+  kibitzVisible: true,
+  composing:     false,
+};
+
+// ── RENDER HELPERS ────────────────────────────────────────────
+
+function toast(msg, type = 'info', duration = 3000) {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.getElementById('toastContainer').appendChild(t);
+  setTimeout(() => t.remove(), duration);
+}
+
+function showModal(html) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = html;
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  document.getElementById('modalContainer').appendChild(overlay);
+  return overlay;
+}
+
+// ── SIDEBAR RENDER ────────────────────────────────────────────
+
+function renderSidebar() {
+  const live     = MOCK_STORIES.filter(s => s.status === 'active');
+  const paused   = MOCK_STORIES.filter(s => s.status === 'paused');
+  const complete = MOCK_STORIES.filter(s => s.status === 'complete');
+
+  const makeRow = s => `
+    <div class="story-row ${s.id === state.activeStoryId ? 'active' : ''}" data-id="${s.id}">
+      <div class="story-row-title">${s.title}</div>
+      <div class="story-row-meta">
+        ${s.status === 'active'  ? '<span class="live-dot"></span>'   : ''}
+        ${s.status === 'paused'  ? '<span class="paused-dot"></span>' : ''}
+        <span>${s.arcLabel}</span>
+        ${s.status === 'active'  ? `<span>· ${s.readers} readers</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  // Live section
+  const sidebar = document.getElementById('sidebar');
+  // Replace only story rows, not the label + new-story-btn
+  const liveLabel = sidebar.querySelector('.sidebar-section-label');
+  // Clear and rebuild
+  sidebar.innerHTML = `
+    <div class="sidebar-section-label">Live Stories</div>
+    ${live.map(makeRow).join('')}
+    ${paused.map(makeRow).join('')}
+    <button class="new-story-btn" id="newStoryBtn">+ new story thread</button>
+    <div class="sidebar-section-label">Archived</div>
+    ${complete.map(makeRow).join('')}
+  `;
+  // Re-attach listeners
+  sidebar.querySelectorAll('.story-row').forEach(row => {
+    row.addEventListener('click', () => selectStory(row.dataset.id));
+  });
+  document.getElementById('newStoryBtn').addEventListener('click', openNewStoryModal);
+}
+
+// ── STORY SELECTION ───────────────────────────────────────────
+
+function selectStory(id) {
+  state.activeStoryId = id;
+  renderSidebar();
+  renderFeed();
+  renderKibitz();
+}
+
+// ── FEED RENDER ───────────────────────────────────────────────
+
+function renderFeed() {
+  const fi = document.getElementById('feedInner');
+  const story = MOCK_STORIES.find(s => s.id === state.activeStoryId);
+  if (!story) {
+    fi.innerHTML = `<div class="empty-state"><div class="empty-fire">🔥</div><div>Select a story to read</div><div style="color:var(--text3);font-size:11px;">or start a new thread</div></div>`;
+    return;
+  }
+
+  const beats = MOCK_BEATS[story.id] || [];
+
+  const authorSigil = makeSigilSVG(story.authorPub, 18);
+  const aiSigil     = makeAISigilSVG(18);
+
+  fi.innerHTML = `
+    <div class="story-header">
+      <div class="arc-tag">${story.arcLabel} · Character slots open</div>
+      <div class="story-title-h">${story.title}</div>
+      <div class="story-byline">
+        ${authorSigil}
+        <span>${story.authorName}</span>
+        <span class="byline-sep">·</span>
+        <span class="tier-badge tier-ai">✦ ${story.aiPersona} (AI)</span>
+        <span class="byline-sep">·</span>
+        <span class="applause-count">🔥 ${story.applause} &nbsp; ❤️ ${story.hearts}</span>
+      </div>
+    </div>
+    ${beats.map(b => renderBeat(b)).join('')}
+    ${story.status === 'active' ? renderComposing(story.aiPersona) : ''}
+  `;
+
+  // Attach reaction listeners
+  fi.querySelectorAll('.react-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleReaction(btn));
+  });
+  fi.querySelectorAll('.tip-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleBeatTip(btn.dataset.id));
+  });
+}
+
+function renderBeat(beat) {
+  const isDriver = beat.authorType === 'driver';
+  const isAI     = beat.authorType === 'ai';
+  const cls      = isDriver ? 'driver-beat' : isAI ? 'ai-beat' : '';
+  const sigilHtml = isAI ? makeAISigilSVG(16) : makeSigilSVG(beat.authorPub, 16);
+
+  const authorLabel = isAI
+    ? `<span class="ai-label">${beat.authorName}</span><span class="tier-badge tier-ai" style="font-size:9px;padding:1px 5px;margin-left:2px">AI</span>`
+    : isDriver
+    ? `<span class="driver-label">${beat.charName}</span><span class="tier-badge tier-driver" style="font-size:9px;padding:1px 5px;margin-left:2px">driver: ${beat.authorName}</span>`
+    : `<span style="color:var(--text2)">${beat.authorName}</span><span style="color:var(--text3);margin-left:4px;font-size:10px">narrator</span>`;
+
+  return `
+    <div class="beat ${cls}" id="beat_${beat.id}">
+      <div class="beat-author">
+        ${sigilHtml}
+        ${authorLabel}
+        <span class="beat-seq">beat ${beat.seq}</span>
+      </div>
+      <div class="beat-text">${beat.content}</div>
+      <div class="beat-reactions">
+        <button class="react-btn ${beat.applause > 10 ? 'active':''}" data-type="fire" data-id="${beat.id}">🔥 ${beat.applause}</button>
+        <button class="react-btn" data-type="heart" data-id="${beat.id}">❤️ ${beat.hearts}</button>
+        ${beat.horror > 0 ? `<button class="react-btn" data-type="horror" data-id="${beat.id}">😱 ${beat.horror}</button>` : ''}
+        <button class="tip-btn" data-id="${beat.id}">tip</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderComposing(persona) {
+  return `<div class="composing">
+    ${makeAISigilSVG(14)}
+    <span style="color:var(--violet)">${persona}</span>
+    <span>is composing…</span>
+    <span class="composing-dots"><span></span><span></span><span></span></span>
+  </div>`;
+}
+
+function makeAISigilSVG(size) {
+  const r = size/2, cx = r, cy = r;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="sigil">
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#12102a"/>
+    <circle cx="${cx}" cy="${cy}" r="${r*.65}" fill="none" stroke="#9b6fff" stroke-width="1.2"/>
+    <circle cx="${cx}" cy="${cy}" r="${r*.25}" fill="#9b6fff" opacity=".7"/>
+    <line x1="${cx}" y1="${cy-r*.58}" x2="${cx}" y2="${cy-r*.38}" stroke="#9b6fff" stroke-width="1"/>
+    <line x1="${cx}" y1="${cy+r*.38}" x2="${cx}" y2="${cy+r*.58}" stroke="#9b6fff" stroke-width="1"/>
+    <line x1="${cx-r*.58}" y1="${cy}" x2="${cx-r*.38}" y2="${cy}" stroke="#9b6fff" stroke-width="1"/>
+    <line x1="${cx+r*.38}" y1="${cy}" x2="${cx+r*.58}" y2="${cy}" stroke="#9b6fff" stroke-width="1"/>
+  </svg>`;
+}
+
+// ── KIBITZ RENDER ─────────────────────────────────────────────
+
+function renderKibitz() {
+  const ks = document.getElementById('kibitzScroll');
+  const notes = MOCK_KIBITZ[state.activeStoryId] || [];
+  if (!notes.length) {
+    ks.innerHTML = `<div style="padding:20px 16px;font-family:var(--mono);font-size:11px;color:var(--text3)">No kibitz notes yet. Be the first!</div>`;
+    return;
+  }
+
+  ks.innerHTML = notes.map(k => {
+    if (k.type === 'whatif') return renderWhatIf(k);
+    return renderKibitzNote(k);
+  }).join('');
+
+  ks.querySelectorAll('.vote-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleKibitzVote(btn));
+  });
+  ks.querySelectorAll('.kib-tip-btn').forEach(btn => {
+    btn.addEventListener('click', () => handleKibitzTip(btn.dataset.id));
+  });
+}
+
+function renderWhatIf(k) {
+  const voted = k.userVoted;
+  return `<div class="whatif-card" id="kib_${k.id}">
+    <div class="whatif-label">what if…</div>
+    <div class="whatif-text">${k.content}</div>
+    <div class="whatif-actions">
+      <button class="vote-btn ${voted==='up'?'up-voted':''}" data-id="${k.id}" data-dir="up">▲ ${k.upvotes}</button>
+      <button class="vote-btn" data-id="${k.id}" data-dir="down">▼ ${k.downvotes}</button>
+    </div>
+  </div>`;
+}
+
+function renderKibitzNote(k) {
+  const voted = k.userVoted;
+  const metaBadge = k.isMeta
+    ? `<span class="tier-badge tier-meta" style="font-size:9px;padding:1px 5px;margin-left:4px">✦ writer's room</span>`
+    : '';
+  return `<div class="kibitz-note" id="kib_${k.id}">
+    ${k.anchor ? `<span class="kibitz-anchor">${k.anchor}</span>` : ''}
+    <div class="kibitz-note-meta">
+      ${makeSigilSVG(k.authorPub || '04abcd', 12)}
+      <span>${k.authorName}</span>
+      ${metaBadge}
+    </div>
+    <div class="kibitz-text">${k.content}</div>
+    <div class="kibitz-actions">
+      <button class="vote-btn ${voted==='up'?'up-voted':''}" data-id="${k.id}" data-dir="up">▲ ${k.upvotes}</button>
+      <button class="vote-btn" data-id="${k.id}" data-dir="down">▼ ${k.downvotes}</button>
+      ${k.tips > 0 ? `<span style="font-family:var(--mono);font-size:10px;color:var(--ember);margin-left:4px">💎 ${k.tips} cap</span>` : ''}
+      <button class="kib-tip-btn" data-id="${k.id}">tip</button>
+    </div>
+  </div>`;
+}
+
+// ── PARTICIPATION TABS ────────────────────────────────────────
+
+const TIER_INFO = {
+  kibitz: {
+    title: 'Tier 1 — Kibitz',
+    desc:  'Leave comments anchored to beats. Post "what if…" suggestions. Vote. ',
+    cost:  'Free.',
+    costClass: 'p-cost-free', costText: '⬡ free', btnText: 'post kibitz →',
+    placeholder: 'Comment on a beat, or post a 'what if…' suggestion…',
+  },
+  drive: {
+    title: 'Tier 2 — Drive a Character',
+    desc:  'Stake tokens to take the wheel of a character for this arc. You write their dialogue and action beats. ',
+    cost:  '10 F1R3Cap / arc.',
+    costClass: 'p-cost-tokens', costText: '⬡ 10 F1R3Cap / arc', btnText: 'stake & drive →',
+    placeholder: 'Write your character\'s next action or line of dialogue…',
+  },
+  meta: {
+    title: 'Tier 3 — Meta-Author',
+    desc:  'Propose arc-level changes: new characters, plot pivots, world-building additions. Enters public deliberation. ',
+    cost:  '50 F1R3Cap / proposal.',
+    costClass: 'p-cost-tokens', costText: '⬡ 50 F1R3Cap / proposal', btnText: 'submit proposal →',
+    placeholder: 'Describe your proposal: arc affected, change type, narrative justification…',
+  },
+};
+
+function renderPTab(tabId) {
+  state.activePTab = tabId;
+  const t = TIER_INFO[tabId];
+  document.getElementById('tierInfo').innerHTML =
+    `<div class="p-tier-title">${t.title}</div><div>${t.desc}<span class="p-tier-cost">${t.cost}</span></div>`;
+  document.getElementById('pTextarea').placeholder = t.placeholder;
+  const ct = document.getElementById('pCostTag');
+  ct.className = `p-cost-tag ${t.costClass}`;
+  ct.textContent = t.costText;
+  document.getElementById('pSubmit').textContent = t.btnText;
+  document.querySelectorAll('.p-tab').forEach(b => b.classList.toggle('active', b.dataset.ptab === tabId));
+}
+
+// ── ACTIONS ───────────────────────────────────────────────────
+
+function handleReaction(btn) {
+  btn.classList.toggle('active');
+  // In production: call shardClient.applandBeat(beatId, identity.privateKeyHex)
+  const parts = btn.textContent.trim().split(' ');
+  const emoji = parts[0];
+  const n     = parseInt(parts[1]) + (btn.classList.contains('active') ? 1 : -1);
+  btn.textContent = `${emoji} ${n}`;
+  toast('🔥 applause recorded on-chain', 'success', 2000);
+}
+
+function handleBeatTip(beatId) {
+  showModal(`
+    <div class="modal">
+      <div class="modal-title">Tip this Beat</div>
+      <div class="modal-field">
+        <label class="modal-label">Amount (F1R3Cap)</label>
+        <input class="modal-input" id="tipAmt" type="number" min="1" max="${balance}" value="5">
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2)">
+        Tips go directly to the beat author's revVault via the F1R3FLY shard.
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="this.closest('.modal-overlay').remove()">cancel</button>
+        <button class="modal-confirm" onclick="confirmBeatTip('${beatId}')">tip →</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmBeatTip(beatId) {
+  const amt = parseInt(document.getElementById('tipAmt').value);
+  document.querySelector('.modal-overlay')?.remove();
+  // Production: shardClient.tipBeat({ beatId, tipAmount: amt, fromRevAddr: identity.revAddress }, identity.privateKeyHex)
+  balance -= amt;
+  renderNavIdentity();
+  toast(`💎 ${amt} F1R3Cap tipped — tx submitted`, 'success');
+}
+
+function handleKibitzVote(btn) {
+  const id  = btn.dataset.id;
+  const dir = btn.dataset.dir;
+  btn.classList.toggle('up-voted');
+  const n = parseInt(btn.textContent.replace(/[▲▼\s]/g,'')) + (btn.classList.contains('up-voted') ? 1 : -1);
+  btn.textContent = `${dir === 'up' ? '▲' : '▼'} ${n}`;
+  // Production: shardClient.voteKibitz(id, dir, identity.privateKeyHex)
+  toast('vote recorded', 'success', 1500);
+}
+
+function handleKibitzTip(kibitzId) {
+  showModal(`
+    <div class="modal">
+      <div class="modal-title">Tip this Kibitz Note</div>
+      <div class="modal-field">
+        <label class="modal-label">Amount (F1R3Cap)</label>
+        <input class="modal-input" id="kibitzTipAmt" type="number" min="1" max="${balance}" value="2">
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="this.closest('.modal-overlay').remove()">cancel</button>
+        <button class="modal-confirm" onclick="confirmKibitzTip('${kibitzId}')">tip →</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmKibitzTip(kibitzId) {
+  const amt = parseInt(document.getElementById('kibitzTipAmt').value);
+  document.querySelector('.modal-overlay')?.remove();
+  balance -= amt;
+  renderNavIdentity();
+  toast(`💎 ${amt} F1R3Cap tipped to kibitz author`, 'success');
+}
+
+function handlePSubmit() {
+  const text = document.getElementById('pTextarea').value.trim();
+  if (!text) return;
+
+  if (state.activePTab === 'kibitz') {
+    // Production: shardClient.postKibitz({ ... }, identity.privateKeyHex)
+    const storyKibitz = MOCK_KIBITZ[state.activeStoryId] || [];
+    const isWhatIf = text.toLowerCase().startsWith('what if');
+    const newKib = {
+      id: 'kib_' + Date.now(), type: isWhatIf ? 'whatif' : 'note',
+      authorPub: identity.publicKeyHex, authorName: identity.displayName || 'anon',
+      anchor: '', content: text,
+      upvotes: 0, downvotes: 0, tips: 0, userVoted: null,
+    };
+    if (!MOCK_KIBITZ[state.activeStoryId]) MOCK_KIBITZ[state.activeStoryId] = [];
+    MOCK_KIBITZ[state.activeStoryId].unshift(newKib);
+    renderKibitz();
+    document.getElementById('pTextarea').value = '';
+    toast('kibitz posted on-chain', 'success');
+
+  } else if (state.activePTab === 'drive') {
+    openDriveModal(text);
+
+  } else if (state.activePTab === 'meta') {
+    openMetaProposalModal(text);
+  }
+}
+
+// ── NEW STORY MODAL ───────────────────────────────────────────
+
+function openNewStoryModal() {
+  showModal(`
+    <div class="modal">
+      <div class="modal-title">New Story Thread</div>
+      <div class="modal-field">
+        <label class="modal-label">Story Title</label>
+        <input class="modal-input" id="ns_title" placeholder="The Serpent's Cartographer…">
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">AI Persona Name</label>
+        <input class="modal-input" id="ns_persona" placeholder="Cassiel, Mnemosyne, Vex…">
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">AI Persona Description</label>
+        <textarea class="modal-input modal-textarea" id="ns_personaSpec" placeholder="Tone, personality, knowledge domain, narrative style…"></textarea>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Opening Beat (narrator voice)</label>
+        <textarea class="modal-input modal-textarea" id="ns_opening" placeholder="The story opens with…" style="min-height:100px"></textarea>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">
+        Creating a story deploys a treasury channel to the F1R3FLY shard. No tokens required to start.
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="this.closest('.modal-overlay').remove()">cancel</button>
+        <button class="modal-confirm" onclick="confirmNewStory()">deploy story →</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmNewStory() {
+  const title   = document.getElementById('ns_title').value.trim();
+  const persona = document.getElementById('ns_persona').value.trim() || 'Cassiel';
+  const opening = document.getElementById('ns_opening').value.trim();
+  if (!title) { toast('Title is required', 'error'); return; }
+  document.querySelector('.modal-overlay')?.remove();
+
+  const newId = 'story_' + Date.now();
+  MOCK_STORIES.unshift({
+    id: newId, title, status: 'active',
+    arcLabel: 'Arc I · Beat 1', readers: 1,
+    aiPersona: persona, authorName: identity.displayName || 'anon',
+    authorPub: identity.publicKeyHex,
+    applause: 0, hearts: 0,
+  });
+  if (opening) {
+    MOCK_BEATS[newId] = [{
+      id: 'beat_open', seq: 1, arcId: 'arc_1',
+      authorType: 'human', authorName: identity.displayName || 'anon',
+      authorPub: identity.publicKeyHex, charName: null,
+      content: opening, applause: 0, hearts: 0, horror: 0,
+    }];
+  }
+
+  // Production: shardClient.createStory({ ... }, identity.privateKeyHex)
+  renderSidebar();
+  selectStory(newId);
+  toast('Story deployed to shard ✓', 'success');
+}
+
+// ── DRIVE CHARACTER MODAL ─────────────────────────────────────
+
+function openDriveModal(beatText) {
+  showModal(`
+    <div class="modal">
+      <div class="modal-title">Drive a Character</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:16px">
+        Stake <strong style="color:var(--ember)">10 F1R3Cap</strong> to claim a character slot for the current arc.
+        You write their dialogue and action beats; the AI integrates your contributions.
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Character Slot</label>
+        <select class="modal-input" id="drv_char" style="background:var(--bg3);color:var(--text)">
+          <option value="Inspector Morrow">Inspector Morrow (open)</option>
+          <option value="Lady Whitmore">Lady Whitmore (open)</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Opening Beat (as your character)</label>
+        <textarea class="modal-input modal-textarea" id="drv_beat">${beatText}</textarea>
+      </div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text3)">
+        Your stake is held in the story treasury and distributed at arc completion according to the author's split spec.
+        Going idle forfeits your stake and returns the character to AI.
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="this.closest('.modal-overlay').remove()">cancel</button>
+        <button class="modal-confirm" onclick="confirmDrive()">stake 10 F1R3Cap →</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmDrive() {
+  if (balance < 10) { toast('Insufficient F1R3Cap balance', 'error'); return; }
+  const char = document.getElementById('drv_char').value;
+  const beat = document.getElementById('drv_beat').value.trim();
+  document.querySelector('.modal-overlay')?.remove();
+  balance -= 10;
+  renderNavIdentity();
+  // Add driver beat to feed
+  if (state.activeStoryId && beat) {
+    if (!MOCK_BEATS[state.activeStoryId]) MOCK_BEATS[state.activeStoryId] = [];
+    MOCK_BEATS[state.activeStoryId].push({
+      id: 'beat_drv_' + Date.now(),
+      seq: (MOCK_BEATS[state.activeStoryId].length || 0) + 1,
+      arcId: 'arc_1',
+      authorType: 'driver', authorName: identity.displayName || 'anon',
+      authorPub: identity.publicKeyHex, charName: char,
+      content: beat, applause: 0, hearts: 0, horror: 0,
+    });
+    renderFeed();
+  }
+  toast(`Staked 10 F1R3Cap · driving ${char}`, 'success');
+}
+
+// ── META-PROPOSAL MODAL ───────────────────────────────────────
+
+function openMetaProposalModal(text) {
+  showModal(`
+    <div class="modal">
+      <div class="modal-title">Meta-Author Proposal</div>
+      <div style="font-family:var(--mono);font-size:11px;color:var(--text2);margin-bottom:16px">
+        Proposals enter a public deliberation queue. Accepted proposals become story canon and are credited on-shard.
+        Cost: <strong style="color:var(--ember)">50 F1R3Cap</strong>.
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Proposal Title</label>
+        <input class="modal-input" id="meta_title" placeholder="Introduce a new antagonist…">
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Change Type</label>
+        <select class="modal-input" id="meta_type" style="background:var(--bg3);color:var(--text)">
+          <option value="new_character">New character</option>
+          <option value="plot_pivot">Plot pivot</option>
+          <option value="world_building">World-building</option>
+          <option value="tone_shift">Tone shift</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div class="modal-field">
+        <label class="modal-label">Narrative Justification</label>
+        <textarea class="modal-input modal-textarea" id="meta_just">${text}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-cancel" onclick="this.closest('.modal-overlay').remove()">cancel</button>
+        <button class="modal-confirm" onclick="confirmMetaProposal()">stake 50 F1R3Cap →</button>
+      </div>
+    </div>
+  `);
+}
+
+function confirmMetaProposal() {
+  if (balance < 50) { toast('Insufficient F1R3Cap balance', 'error'); return; }
+  const title   = document.getElementById('meta_title').value.trim();
+  const type    = document.getElementById('meta_type').value;
+  const just    = document.getElementById('meta_just').value.trim();
+  if (!title) { toast('Title is required', 'error'); return; }
+  document.querySelector('.modal-overlay')?.remove();
+  balance -= 50;
+  renderNavIdentity();
+  // Add to kibitz as meta note
+  if (!MOCK_KIBITZ[state.activeStoryId]) MOCK_KIBITZ[state.activeStoryId] = [];
+  MOCK_KIBITZ[state.activeStoryId].unshift({
+    id: 'kib_meta_' + Date.now(), type: 'meta',
+    authorPub: identity.publicKeyHex, authorName: identity.displayName || 'anon',
+    anchor: '', content: `[Proposal: ${title}] ${just}`,
+    upvotes: 0, downvotes: 0, tips: 0, userVoted: null, isMeta: true,
+  });
+  renderKibitz();
+  toast('Proposal submitted · 50 F1R3Cap staked · under deliberation', 'info');
+}
+
+// ── KIBITZ TOGGLE ─────────────────────────────────────────────
+
+document.getElementById('kibitzToggle').addEventListener('click', () => {
+  const panel = document.getElementById('kibitzPanel');
+  state.kibitzVisible = !state.kibitzVisible;
+  if (state.kibitzVisible) {
+    panel.style.display = '';
+    document.querySelector('.layout').style.gridTemplateColumns = `var(--sidebar-w) 1fr var(--kibitz-w)`;
+    document.getElementById('kibitzToggle').textContent = 'hide ×';
+  } else {
+    panel.style.display = 'none';
+    document.querySelector('.layout').style.gridTemplateColumns = `var(--sidebar-w) 1fr`;
+    document.getElementById('kibitzToggle').textContent = '';
+  }
+});
+
+// ── WIRE UP ───────────────────────────────────────────────────
+
+// Nav tabs
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    // In production: route to different views
+    toast('Coming soon: ' + tab.dataset.tab + ' view', 'info', 2000);
+  });
+  // Keep 'live' active for demo
+  if (tab.dataset.tab === 'live') tab.classList.add('active');
+});
+
+// Participation tabs
+document.querySelectorAll('.p-tab').forEach(btn => {
+  btn.addEventListener('click', () => renderPTab(btn.dataset.ptab));
+});
+
+// Submit
+document.getElementById('pSubmit').addEventListener('click', handlePSubmit);
+document.getElementById('pTextarea').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handlePSubmit();
+});
+
+// ── BOOT ─────────────────────────────────────────────────────
+renderNavIdentity();
+renderSidebar();
+selectStory('story_whitmore');
+</script>
+</body>
+</html>
