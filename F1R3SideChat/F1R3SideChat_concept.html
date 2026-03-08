@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F1R3SideChat — Concept</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400;1,700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --bg2: #0f0f18;
+    --bg3: #141420;
+    --border: #1e1e30;
+    --border2: #2a2a40;
+    --text: #d4d4e8;
+    --text2: #7878a0;
+    --text3: #4a4a68;
+    --fire: #ff4d1c;
+    --fire2: #ff7043;
+    --ember: #ffab40;
+    --cyan: #00e5ff;
+    --violet: #9c6bff;
+    --green: #00e676;
+    --serif: 'Playfair Display', Georgia, serif;
+    --mono: 'DM Mono', 'JetBrains Mono', monospace;
+    --sans: 'DM Sans', sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── TOP NAV ── */
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    font-family: var(--mono);
+    font-weight: 500;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo-fire { color: var(--fire); }
+  .logo-side { color: var(--text2); }
+  .logo-chat { color: var(--text); }
+
+  .nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  .token-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,77,28,0.1);
+    border: 1px solid rgba(255,77,28,0.3);
+    border-radius: 4px;
+    padding: 4px 10px;
+    color: var(--ember);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .sigil {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+  }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr 320px;
+    grid-template-rows: 1fr;
+    height: calc(100vh - 49px);
+  }
+
+  /* ── LEFT SIDEBAR ── */
+  .sidebar {
+    border-right: 1px solid var(--border);
+    padding: 20px 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sidebar-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--text3);
+    text-transform: uppercase;
+    padding: 0 18px 8px;
+    margin-top: 14px;
+  }
+
+  .story-item {
+    padding: 10px 18px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: all 0.15s;
+  }
+  .story-item:hover { background: var(--bg2); border-left-color: var(--border2); }
+  .story-item.active { background: var(--bg3); border-left-color: var(--fire); }
+
+  .story-title {
+    font-family: var(--serif);
+    font-size: 13px;
+    font-style: italic;
+    color: var(--text);
+    line-height: 1.3;
+    margin-bottom: 3px;
+  }
+  .story-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+  .story-live {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 5px;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* ── MAIN FEED ── */
+  .feed {
+    overflow-y: auto;
+    padding: 32px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .story-header {
+    margin-bottom: 32px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .arc-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--fire2);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .story-name {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-style: italic;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.2;
+  }
+
+  .story-byline {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .by-sigil {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 4px;
+    position: relative;
+    top: -1px;
+  }
+
+  .tier-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-radius: 3px;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-family: var(--mono);
+    letter-spacing: 0.05em;
+  }
+  .tier-ai { background: rgba(156,107,255,0.12); border: 1px solid rgba(156,107,255,0.3); color: var(--violet); }
+  .tier-driver { background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25); color: var(--cyan); }
+
+  /* ── BEAT ── */
+  .beat {
+    position: relative;
+    padding: 20px 0 24px;
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    animation: fadeIn 0.4s ease;
+  }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+
+  .beat-author-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  .char-name {
+    font-style: normal;
+    font-weight: 500;
+    font-size: 11px;
+  }
+
+  .beat-text {
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.75;
+    color: var(--text);
+    letter-spacing: 0.01em;
+  }
+
+  .beat-text em { color: var(--text2); font-style: italic; }
+
+  .beat-text .dialogue {
+    color: #e8e0ff;
+    font-style: italic;
+  }
+
+  .beat-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .react-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 3px 6px;
+    border-radius: 3px;
+    transition: all 0.12s;
+  }
+  .react-btn:hover { color: var(--fire2); background: rgba(255,112,67,0.08); }
+  .react-btn.active { color: var(--fire); }
+
+  .driver-beat { background: rgba(0,229,255,0.015); border-left: 2px solid rgba(0,229,255,0.2); padding-left: 16px; margin-left: -18px; }
+  .ai-beat { border-left: 2px solid rgba(156,107,255,0.2); padding-left: 16px; margin-left: -18px; }
+
+  /* ── KIBITZ RAIL ── */
+  .kibitz {
+    border-left: 1px solid var(--border);
+    overflow-y: auto;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .kibitz-header {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 10;
+  }
+
+  .kibitz-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+
+  .kibitz-toggle {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    background: none;
+    border: none;
+    cursor: pointer;
+  }
+  .kibitz-toggle:hover { color: var(--text2); }
+
+  .kibitz-items {
+    padding: 12px 0;
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .kibitz-note {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  .kibitz-note:hover { background: var(--bg2); }
+
+  .kib-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  .kib-text {
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--text2);
+  }
+
+  .kib-anchor {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 2px 6px;
+    margin-bottom: 5px;
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .kib-votes {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .vote-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 2px 7px;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .vote-btn:hover { border-color: var(--fire2); color: var(--fire2); }
+  .vote-btn.up { color: var(--green); border-color: rgba(0,230,118,0.3); }
+
+  .whatif-card {
+    background: var(--bg2);
+    border: 1px dashed var(--border2);
+    border-radius: 4px;
+    padding: 10px 14px;
+    margin: 8px 18px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text2);
+    font-style: italic;
+  }
+  .whatif-label {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ember);
+    margin-bottom: 5px;
+  }
+
+  /* ── PARTICIPATION PANEL ── */
+  .participate-footer {
+    border-top: 1px solid var(--border);
+    padding: 14px 18px;
+    background: var(--bg);
+  }
+
+  .participate-tabs {
+    display: flex;
+    gap: 2px;
+    margin-bottom: 12px;
+  }
+
+  .p-tab {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    cursor: pointer;
+    background: none;
+    color: var(--text3);
+    transition: all 0.1s;
+  }
+  .p-tab:hover { color: var(--text2); border-color: var(--border2); }
+  .p-tab.active { color: var(--fire); border-color: rgba(255,77,28,0.4); background: rgba(255,77,28,0.06); }
+
+  .participate-input {
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    resize: none;
+    outline: none;
+    transition: border-color 0.1s;
+    height: 52px;
+  }
+  .participate-input:focus { border-color: var(--border2); }
+  .participate-input::placeholder { color: var(--text3); font-style: italic; }
+
+  .p-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+  }
+
+  .cost-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+  }
+  .cost-free { color: var(--green); }
+  .cost-token { color: var(--ember); }
+
+  .submit-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 5px 14px;
+    background: rgba(255,77,28,0.15);
+    border: 1px solid rgba(255,77,28,0.35);
+    color: var(--fire2);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .submit-btn:hover { background: rgba(255,77,28,0.25); }
+
+  /* ── SVG SIGILS ── */
+  .sigil-svg { border-radius: 50%; }
+
+  /* ── TIER INFO PANEL ── */
+  .tier-info {
+    padding: 12px 18px;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    margin: 0 18px 12px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+  .tier-info-title { color: var(--cyan); margin-bottom: 4px; font-weight: 500; }
+
+  /* ── NEW BEAT INCOMING ── */
+  .live-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text3);
+    padding: 8px 0;
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <div class="logo">
+    <span class="logo-fire">F1R3</span><span class="logo-side">Side</span><span class="logo-chat">Chat</span>
+  </div>
+  <div class="nav-actions">
+    <span>Discover</span>
+    <span>Following</span>
+    <span>Archive</span>
+    <div class="token-badge">
+      <svg width="10" height="10" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4" fill="none" stroke="#ffab40" stroke-width="1.5"/><path d="M5 2v3l2 1" stroke="#ffab40" stroke-width="1" fill="none" stroke-linecap="round"/></svg>
+      340 F1R3Cap
+    </div>
+    <!-- User sigil -->
+    <svg class="sigil-svg" width="28" height="28" viewBox="0 0 28 28">
+      <circle cx="14" cy="14" r="14" fill="#1a1a2e"/>
+      <polygon points="14,4 22,10 22,20 14,24 6,20 6,10" fill="none" stroke="#ff4d1c" stroke-width="1.5"/>
+      <circle cx="14" cy="14" r="4" fill="#ff4d1c" opacity="0.6"/>
+      <line x1="14" y1="4" x2="14" y2="8" stroke="#ff7043" stroke-width="1"/>
+      <line x1="22" y1="10" x2="18.5" y2="12" stroke="#ff7043" stroke-width="1"/>
+    </svg>
+  </div>
+</nav>
+
+<!-- LAYOUT -->
+<div class="layout">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-label">Live Stories</div>
+
+    <div class="story-item active">
+      <div class="story-title">The Whitmore Murders</div>
+      <div class="story-meta">
+        <span class="story-live"></span>Arc III · 14 readers
+      </div>
+    </div>
+
+    <div class="story-item">
+      <div class="story-title">A Cartography of Ghosts</div>
+      <div class="story-meta">
+        <span class="story-live"></span>Arc I · 8 readers
+      </div>
+    </div>
+
+    <div class="story-item">
+      <div class="story-title">The Consul of Last Resort</div>
+      <div class="story-meta" style="color:var(--text3)">Arc II · paused</div>
+    </div>
+
+    <div class="sidebar-label" style="margin-top:16px">Archived</div>
+
+    <div class="story-item">
+      <div class="story-title">Ballad of the Null Meridian</div>
+      <div class="story-meta" style="color:var(--text3)">Complete · 3 arcs</div>
+    </div>
+
+    <div class="story-item">
+      <div class="story-title">Victoria & Balthazar: The Pemberton Affair</div>
+      <div class="story-meta" style="color:var(--text3)">Complete · 2 arcs</div>
+    </div>
+  </aside>
+
+  <!-- MAIN FEED -->
+  <main class="feed">
+    <div class="story-header">
+      <div class="arc-label">Arc III · Beat 7 of ~20 · Character slots open</div>
+      <div class="story-name">The Whitmore Murders</div>
+      <div class="story-byline">
+        <!-- Author sigil -->
+        <svg class="by-sigil sigil-svg" width="18" height="18" viewBox="0 0 18 18">
+          <circle cx="9" cy="9" r="9" fill="#1a1a2e"/>
+          <polygon points="9,2 15,6 15,13 9,16 3,13 3,6" fill="none" stroke="#9c6bff" stroke-width="1.2"/>
+          <circle cx="9" cy="9" r="3" fill="#9c6bff" opacity="0.5"/>
+        </svg>
+        <span>leithaus</span>
+        <span style="color:var(--text3)">·</span>
+        <span class="tier-pill tier-ai">✦ Cassiel (AI)</span>
+        <span style="color:var(--text3)">·</span>
+        <span>🔥 142 &nbsp; ❤️ 38</span>
+      </div>
+    </div>
+
+    <!-- Beat 5 — human author -->
+    <div class="beat">
+      <div class="beat-author-line">
+        <svg class="sigil-svg" width="16" height="16" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="8" fill="#1a1a2e"/>
+          <polygon points="8,2 13,5 13,11 8,14 3,11 3,5" fill="none" stroke="#9c6bff" stroke-width="1"/>
+          <circle cx="8" cy="8" r="2.5" fill="#9c6bff" opacity="0.5"/>
+        </svg>
+        <span style="color:var(--text2)">leithaus</span>
+        <span style="color:var(--text3)">·</span>
+        <span style="color:var(--text3)">narrator</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:10px">beat 5</span>
+      </div>
+      <div class="beat-text">
+        Victoria found the second glove at half past midnight, tucked behind the false panel in the billiard room—the one Whitmore himself had shown her three years ago, before he understood what she was. The leather was still damp. Someone had been wearing it recently, or had wanted her to think so.
+        <br><br>
+        She lit the second lamp and held both gloves up against the window, comparing the seams.
+      </div>
+      <div class="beat-actions">
+        <button class="react-btn active">🔥 12</button>
+        <button class="react-btn">❤️ 4</button>
+        <button class="react-btn">😱 1</button>
+        <button class="react-btn" style="margin-left:auto; font-size:10px">tip</button>
+      </div>
+    </div>
+
+    <!-- Beat 6 — AI co-author -->
+    <div class="beat ai-beat">
+      <div class="beat-author-line">
+        <svg class="sigil-svg" width="16" height="16" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="8" fill="#12102a"/>
+          <circle cx="8" cy="8" r="5" fill="none" stroke="#9c6bff" stroke-width="1"/>
+          <circle cx="8" cy="8" r="2" fill="#9c6bff" opacity="0.7"/>
+          <line x1="8" y1="3" x2="8" y2="5" stroke="#9c6bff" stroke-width="1"/>
+          <line x1="8" y1="11" x2="8" y2="13" stroke="#9c6bff" stroke-width="1"/>
+          <line x1="3" y1="8" x2="5" y2="8" stroke="#9c6bff" stroke-width="1"/>
+          <line x1="11" y1="8" x2="13" y2="8" stroke="#9c6bff" stroke-width="1"/>
+        </svg>
+        <span style="color:var(--violet)">Cassiel</span>
+        <span class="tier-pill tier-ai" style="font-size:9px; padding: 1px 5px;">AI</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:10px">beat 6</span>
+      </div>
+      <div class="beat-text">
+        Balthazar appeared in the doorway, his coat still carrying the smell of the river. He did not ask about the gloves. He watched her, and something in his stillness said he had already worked it out—or thought he had.
+        <br><br>
+        <span class="dialogue">"You'll want to look at the cufflinks next,"</span> he said, at last. <span class="dialogue">"The pattern is a maker's mark. Flemish, probably. I know a man in Antwerp."</span>
+      </div>
+      <div class="beat-actions">
+        <button class="react-btn active">🔥 19</button>
+        <button class="react-btn">❤️ 7</button>
+        <button class="react-btn">👁️ 3</button>
+        <button class="react-btn" style="margin-left:auto; font-size:10px">tip</button>
+      </div>
+    </div>
+
+    <!-- Beat 7 — Character Driver -->
+    <div class="beat driver-beat">
+      <div class="beat-author-line">
+        <svg class="sigil-svg" width="16" height="16" viewBox="0 0 16 16">
+          <circle cx="8" cy="8" r="8" fill="#0d1a1a"/>
+          <rect x="4" y="4" width="8" height="8" fill="none" stroke="#00e5ff" stroke-width="1" transform="rotate(45 8 8)"/>
+          <circle cx="8" cy="8" r="2" fill="#00e5ff" opacity="0.6"/>
+        </svg>
+        <span style="color:var(--cyan)">Inspector Morrow</span>
+        <span class="tier-pill tier-driver" style="font-size:9px; padding: 1px 5px;">driver: rheaknight</span>
+        <span style="color:var(--text3);margin-left:auto;font-size:10px">beat 7</span>
+      </div>
+      <div class="beat-text">
+        The Inspector cleared his throat from the corridor outside, loudly enough that they would know he had been there some time. He stepped in without being invited—his usual manner—and registered the two lamps, the gloves, and Balthazar's river-damp coat with one slow sweep of his eyes.
+        <br><br>
+        <span class="dialogue">"The household staff are asleep, Miss Alderton. Or so they claim."</span> He did not look at her when he said it. He was looking at the gloves. <span class="dialogue">"Someone ought to tell them that innocent people seldom need to claim anything."</span>
+      </div>
+      <div class="beat-actions">
+        <button class="react-btn active">🔥 8</button>
+        <button class="react-btn">❤️ 11</button>
+        <button class="react-btn active" style="color:var(--green)">👏 tip: 2 F1R3Cap</button>
+      </div>
+    </div>
+
+    <!-- Live indicator -->
+    <div class="live-indicator">
+      <span class="story-live"></span>
+      Cassiel is composing beat 8…
+    </div>
+  </main>
+
+  <!-- KIBITZ RAIL -->
+  <aside class="kibitz">
+    <div class="kibitz-header">
+      <span class="kibitz-label">Kibitz Rail</span>
+      <button class="kibitz-toggle">hide ×</button>
+    </div>
+
+    <div class="kibitz-items">
+
+      <!-- What-if card -->
+      <div class="whatif-card">
+        <div class="whatif-label">what if…</div>
+        The cufflinks belong to Victoria's brother — the one she told Balthazar was abroad.
+        <div class="kib-votes" style="margin-top:8px">
+          <button class="vote-btn up">▲ 14</button>
+          <button class="vote-btn">▼ 2</button>
+        </div>
+      </div>
+
+      <!-- Kibitz notes -->
+      <div class="kibitz-note">
+        <span class="kib-anchor">"The pattern is a maker's mark. Flemish…"</span>
+        <div class="kib-meta">
+          <svg class="sigil-svg" width="12" height="12" viewBox="0 0 12 12">
+            <circle cx="6" cy="6" r="6" fill="#1a1a2e"/>
+            <circle cx="6" cy="6" r="3" fill="none" stroke="#ffab40" stroke-width="1"/>
+            <circle cx="6" cy="6" r="1.2" fill="#ffab40"/>
+          </svg>
+          <span>inkwell_crow</span>
+          <span style="color:var(--text3)">· tier 1</span>
+        </div>
+        <div class="kib-text">Cassiel flagging Antwerp so early feels like a planted red herring. Whitmore had Belgian connections from the Congo trade. This is going to loop back.</div>
+        <div class="kib-votes">
+          <button class="vote-btn up">▲ 9</button>
+          <button class="vote-btn">▼ 0</button>
+          <button class="react-btn" style="font-size:10px;margin-left:auto;color:var(--text3)">tip</button>
+        </div>
+      </div>
+
+      <div class="kibitz-note">
+        <span class="kib-anchor">"innocent people seldom need to claim…"</span>
+        <div class="kib-meta">
+          <svg class="sigil-svg" width="12" height="12" viewBox="0 0 12 12">
+            <circle cx="6" cy="6" r="6" fill="#1a2a1a"/>
+            <polygon points="6,1 10,4 10,8 6,11 2,8 2,4" fill="none" stroke="#00e676" stroke-width="1"/>
+            <circle cx="6" cy="6" r="1.5" fill="#00e676" opacity="0.6"/>
+          </svg>
+          <span>sable_margin</span>
+        </div>
+        <div class="kib-text">rheaknight absolutely nailed Morrow's voice — that last line is exactly how he would have said it. Better than any of the earlier AI versions of him.</div>
+        <div class="kib-votes">
+          <button class="vote-btn up">▲ 22</button>
+          <button class="vote-btn">▼ 1</button>
+          <button class="react-btn" style="font-size:10px;margin-left:auto;color:var(--ember)">💎 tip: 5 cap</button>
+        </div>
+      </div>
+
+      <div class="kibitz-note">
+        <div class="kib-meta">
+          <svg class="sigil-svg" width="12" height="12" viewBox="0 0 12 12">
+            <circle cx="6" cy="6" r="6" fill="#1a1820"/>
+            <rect x="3" y="3" width="6" height="6" fill="none" stroke="#9c6bff" stroke-width="1" transform="rotate(15 6 6)"/>
+            <circle cx="6" cy="6" r="1.5" fill="#9c6bff" opacity="0.5"/>
+          </svg>
+          <span>phosphor_reed</span>
+          <span style="color:var(--text3)">· meta-author</span>
+          <span class="tier-pill" style="background:rgba(156,107,255,0.1);border:1px solid rgba(156,107,255,0.25);color:var(--violet);font-size:9px;padding:1px 5px;margin-left:4px">✦ writer's room</span>
+        </div>
+        <div class="kib-text">Pitched in the meta-log: Victoria should have a moment alone before arc end where she realises she's being watched — not by Morrow, by someone who knows about the panel. leithaus and Cassiel reviewing now.</div>
+        <div class="kib-votes">
+          <button class="vote-btn up">▲ 31</button>
+          <button class="vote-btn">▼ 0</button>
+        </div>
+      </div>
+
+    </div><!-- kibitz-items -->
+
+    <!-- Participate footer -->
+    <div class="participate-footer">
+      <div class="participate-tabs">
+        <button class="p-tab active">kibitz</button>
+        <button class="p-tab">drive character</button>
+        <button class="p-tab">meta-author</button>
+      </div>
+
+      <div class="tier-info">
+        <div class="tier-info-title">Tier 1 — Kibitz</div>
+        Leave a comment anchored to any beat. Suggest alternative plot moves. Free.
+      </div>
+
+      <textarea class="participate-input" placeholder="Comment on a beat, or post a 'what if…' suggestion…"></textarea>
+      <div class="p-actions">
+        <span class="cost-label cost-free">⬡ free</span>
+        <button class="submit-btn">post kibitz →</button>
+      </div>
+    </div>
+
+  </aside>
+
+</div><!-- layout -->
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.p-tab').forEach((tab, i) => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.p-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+
+      const info = document.querySelector('.tier-info');
+      const input = document.querySelector('.participate-input');
+      const costLabel = document.querySelector('.cost-label');
+      const submitBtn = document.querySelector('.submit-btn');
+
+      const tiers = [
+        { title: 'Tier 1 — Kibitz', desc: 'Leave a comment anchored to any beat. Suggest alternative plot moves. Free.', placeholder: 'Comment on a beat, or post a 'what if…' suggestion…', cost: '⬡ free', costClass: 'cost-free', btn: 'post kibitz →' },
+        { title: 'Tier 2 — Drive a Character', desc: 'Stake 10 F1R3Cap to take the wheel of Inspector Morrow for this arc. You write his dialogue and action beats.', placeholder: 'Write Inspector Morrow's next action or dialogue…', cost: '⬡ 10 F1R3Cap / arc', costClass: 'cost-token', btn: 'stake & drive →' },
+        { title: 'Tier 3 — Meta-Author', desc: 'Pitch an arc-level change. Propose new characters, plot pivots, world-building additions. 50 F1R3Cap per proposal.', placeholder: 'Describe your arc proposal: arc affected, change, narrative justification…', cost: '⬡ 50 F1R3Cap / proposal', costClass: 'cost-token', btn: 'submit proposal →' },
+      ];
+
+      const t = tiers[i];
+      info.querySelector('.tier-info-title').textContent = t.title;
+      info.childNodes[info.childNodes.length - 1].textContent = t.desc;
+      info.lastChild.textContent = t.desc;
+      // simpler approach:
+      info.innerHTML = `<div class="tier-info-title">${t.title}</div>${t.desc}`;
+      input.placeholder = t.placeholder;
+      costLabel.className = `cost-label ${t.costClass}`;
+      costLabel.textContent = t.cost;
+      submitBtn.textContent = t.btn;
+    });
+  });
+
+  // React button toggle
+  document.querySelectorAll('.react-btn').forEach(btn => {
+    if (!btn.textContent.includes('tip') && !btn.textContent.includes('cap')) {
+      btn.addEventListener('click', () => btn.classList.toggle('active'));
+    }
+  });
+</script>
+
+</body>
+</html>
