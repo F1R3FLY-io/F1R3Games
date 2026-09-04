@@ -162,11 +162,18 @@ Module Skein {
   -- ═══════════════════════════════════════════════════════════════════════
   -- Snips
   --
-  -- The leaf. `Snip(k, i, j)` is the scissors gesture: fresh spigots from
-  -- the skein's two configurations, fast-forwarded to i, and j-i pairs
-  -- collected. Note that the live cursors are unaffected, which is why a
-  -- snip is a function of the skein and the interval alone -- and therefore
-  -- why a snipped tune compresses to a handful of bytes.
+  -- The leaf. `Snip(k, iL, iR, n)` is the two-handed scissors gesture. The
+  -- two cursors are INDEPENDENT -- that independence is the whole point of
+  -- the two-ribbon instrument -- so a snip carries a start position for each
+  -- side. It carries a single length n because the notches on the ribbons'
+  -- inner edges mesh one-to-one: once zipped, notch k on the left is
+  -- committed to notch k on the right, and equal counts are guaranteed
+  -- rather than assumed. A notch pair is a note.
+  --
+  -- At the instrument: the near hand supplies iL and iR, the separation of
+  -- the hands supplies n. Hands together gives n = 0, which normalises to
+  -- Rest by the equation below. The live cursors are unaffected, so a
+  -- snipped tune still compresses to two configurations and three numbers.
   --
   -- The join is over NOTHING. Weave descends from `Counting`, hence from one
   -- `u.EmptySet`; Melody descends from a SECOND, independent `u.EmptySet`.
@@ -180,10 +187,11 @@ Module Skein {
   Theory Snips(w: Weave, me: Melody) {
     { w \/ me }
       Terms {
-        Snip . k:Skein, i:Nat, j:Nat |- "snip" "(" k "," i "," j ")" : Tune;
+        Snip . k:Skein, iL:Nat, iR:Nat, n:Nat
+             |- "snip" "(" k "," iL "," iR "," n ")" : Tune;
       }
       Equations {
-        (Snip k i i) == (Rest);
+        (Snip k iL iR (NZero)) == (Rest);
       }
   }
 
