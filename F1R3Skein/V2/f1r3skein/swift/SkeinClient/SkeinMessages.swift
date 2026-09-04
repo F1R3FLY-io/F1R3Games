@@ -2,10 +2,10 @@
 //
 // Protocol v4, Codable both ways. Spec §9.
 //
-// The client resolves no gestures of its own except the panel equivalents:
-// detection lives in the Rust core so that S1 and S2 share one implementation
-// and the detectors stay unit-testable. This file therefore mostly carries
-// samples out and state in.
+// The client resolves no gestures of its own except the panel equivalents the
+// spec requires for accessibility: detection lives in the Rust core, so that
+// configurations S1 and S2 share one implementation and the detectors stay
+// unit-testable against recorded traces.
 
 import Foundation
 
@@ -49,18 +49,73 @@ public struct SkeinFrame: Codable, Equatable {
     public var head: SkeinHead?
 }
 
+// MARK: - Gestures
+
+/// Mirrors the Rust `Gesture` enum, which is internally tagged on `gesture`
+/// with snake_case names. Payloads matter: `zip` carries the closing speed
+/// that becomes the mesh tempo, and `snip` carries two notch offsets because
+/// the capture is bracketed by both hands.
+public enum SkeinGesture: Encodable, Equatable {
+    case pullLeft(steps: UInt32, velocity: Float)
+    case pullRight(steps: UInt32, velocity: Float)
+    case twist
+    case zip(closingSpeed: Float)
+    case unzip
+    /// Set and clear, never a toggle: on a noisy detector a missed fire and a
+    /// double fire are indistinguishable, and M corrects by tilting again.
+    case halt(on: Bool)
+    case mount
+    case unmount
+    case loop(on: Bool)
+    case snip(near: Int, far: Int)
+
+    enum CodingKeys: String, CodingKey {
+        case gesture, steps, velocity, closing_speed, on, near, far
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .pullLeft(let s, let v):
+            try c.encode("pull_left", forKey: .gesture)
+            try c.encode(s, forKey: .steps); try c.encode(v, forKey: .velocity)
+        case .pullRight(let s, let v):
+            try c.encode("pull_right", forKey: .gesture)
+            try c.encode(s, forKey: .steps); try c.encode(v, forKey: .velocity)
+        case .twist:
+            try c.encode("twist", forKey: .gesture)
+        case .zip(let speed):
+            try c.encode("zip", forKey: .gesture)
+            try c.encode(speed, forKey: .closing_speed)
+        case .unzip:
+            try c.encode("unzip", forKey: .gesture)
+        case .halt(let on):
+            try c.encode("halt", forKey: .gesture); try c.encode(on, forKey: .on)
+        case .mount:
+            try c.encode("mount", forKey: .gesture)
+        case .unmount:
+            try c.encode("unmount", forKey: .gesture)
+        case .loop(let on):
+            try c.encode("loop", forKey: .gesture); try c.encode(on, forKey: .on)
+        case .snip(let near, let far):
+            try c.encode("snip", forKey: .gesture)
+            try c.encode(near, forKey: .near); try c.encode(far, forKey: .far)
+        }
+    }
+}
+
 // MARK: - Client to engine
 
 public enum ClientMessage: Encodable {
     case frame(SkeinFrame)
-    case gesture(name: String, on: Bool?)
+    case gesture(SkeinGesture)
     case configure(pitchMap: String?, durationMap: String?, root: UInt8?, instrument: UInt8?)
     case rename(id: UInt64, name: String)
     case quit
 
     enum CodingKeys: String, CodingKey {
-        case type, v, frame, gesture, on
-        case pitch_map, duration_map, root, instrument
+        case type, v, frame, gesture
+        case left, right, pitch_map, duration_map, root, instrument
         case id, name
     }
 
@@ -71,35 +126,23 @@ public enum ClientMessage: Encodable {
         case .frame(let f):
             try c.encode("frame", forKey: .type)
             try c.encode(f, forKey: .frame)
-        case .gesture(let name, let on):
+        case .gesture(let g):
             try c.encode("gesture", forKey: .type)
-            var g: [String: AnyEncodableValue] = ["gesture": .string(name)]
-            if let on { g["on"] = .bool(on) }
             try c.encode(g, forKey: .gesture)
         case .configure(let pm, let dm, let root, let inst):
             try c.encode("configure", forKey: .type)
-            try c.encodeIfPresent(pm, forKey: .pitch_map)
-            try c.encodeIfPresent(dm, forKey: .duration_map)
-            try c.encodeIfPresent(root, forKey: .root)
-            try c.encodeIfPresent(inst, forKey: .instrument)
+            try c.encodeNil(forKey: .left)
+            try c.encodeNil(forKey: .right)
+            try c.encode(pm, forKey: .pitch_map)
+            try c.encode(dm, forKey: .duration_map)
+            try c.encode(root, forKey: .root)
+            try c.encode(inst, forKey: .instrument)
         case .rename(let id, let name):
             try c.encode("rename", forKey: .type)
             try c.encode(id, forKey: .id)
             try c.encode(name, forKey: .name)
         case .quit:
             try c.encode("quit", forKey: .type)
-        }
-    }
-}
-
-public enum AnyEncodableValue: Encodable {
-    case string(String), bool(Bool), int(Int)
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.singleValueContainer()
-        switch self {
-        case .string(let s): try c.encode(s)
-        case .bool(let b): try c.encode(b)
-        case .int(let i): try c.encode(i)
         }
     }
 }
@@ -117,6 +160,7 @@ public struct ZipState: Equatable {
     public var stoppedBy: String?
     public var warning = false
 
+    public init() {}
     public init(_ d: [String: Any]) {
         zipped = d["zipped"] as? Bool ?? false
         front = d["front"] as? Int ?? 0
@@ -126,4 +170,12 @@ public struct ZipState: Equatable {
         stoppedBy = d["stopped_by"] as? String
         warning = d["warning"] as? Bool ?? false
     }
+}
+
+public struct TrayEntry: Identifiable, Equatable {
+    public var id: UInt64
+    public var name: String
+    public var count: Int
+    public var iLeft: Int
+    public var iRight: Int
 }

@@ -20,6 +20,7 @@
 
 import RealityKit
 import simd
+import UIKit
 
 @MainActor
 public final class RibbonScene {

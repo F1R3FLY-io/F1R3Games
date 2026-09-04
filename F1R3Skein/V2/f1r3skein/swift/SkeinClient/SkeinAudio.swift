@@ -13,6 +13,7 @@
 // two streams are audibly distinct as well as visually distinct.
 
 import AVFoundation
+import QuartzCore
 
 public final class SkeinAudio {
 

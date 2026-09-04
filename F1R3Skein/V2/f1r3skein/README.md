@@ -8,8 +8,13 @@ skein-core/     terms, realisation, envelope, calibration, gesture detectors,
                 the instrument state machine, performance traces
 skein-proto/    wire protocol v4
 skein-engine/   TCP server (configuration S1) and a headless selftest
-swift/          visionOS client: transport, audio, ARKit sampling, scene
+swift/          visionOS client — see swift/BUILDING.md
+  project.yml     XcodeGen spec; `xcodegen generate` produces the target
+  SkeinClient/    app, panel, immersive view, model, transport, audio,
+                  ARKit sampling, scene, trace recorder, Info.plist
 ```
+
+To install on a headset, start at **`swift/BUILDING.md`**.
 
 ## Status
 
@@ -128,11 +133,9 @@ play resumes beyond it rather than re-treading it.
 * Configuration S2. The FFI surface is the natural next step and the crate is
   already free of I/O, so it is a matter of `extern "C"` shims plus an
   `aarch64-apple-visionos` target.
-* The debug overlay and the trace recorder's disk sink. `HandFeed.onRawSample`
-  emits the samples; nothing writes them yet. Per the triage this looks
-  deferrable and is not: without a corpus, tuning after the first session is
-  guesswork too.
-* Tray persistence across launches.
+* Tray persistence across launches. Traces persist; the tray does not.
+* Panel control of the instrument program (General MIDI) — the message exists,
+  the control does not.
 
 ## Order of work for the demo
 
