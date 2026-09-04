@@ -1,0 +1,263 @@
+{- ---------------------------------------------------------------------------
+   Skein.module
+
+   A Theory of skeins, in the syntax frozen by
+   docs/plans/mettail-ddl-and-modules-2026-08-19.md.
+
+   PURPOSE. This file is the executable specification that the hand-written
+   `SkeinTerm` ADT in `skein-core` (representation version `skein/v0`) is
+   property-tested against. It is written NOW, in phase P2, rather than at
+   migration time in P6, precisely so that v0 cannot quietly commit to
+   something this Theory is unable to express.
+
+   THE CENTRAL CLAIM. A tune is a TERM, not a blob. Its leaves are spigot
+   addresses -- (constant, base, interval) -- and its internal nodes are the
+   snip, twist, pad, crossover and mutation operators. Realisation is a
+   rewrite. Three things follow at once:
+
+     * lineage is not stored alongside a tune, it IS the tune's own syntax,
+       so the `parents` pointer in the current JavaScript disappears;
+     * equations give canonical forms, so two tunes that are the same tune
+       are recognised as such and the gallery de-duplicates by normalisation
+       rather than by hashing realised audio;
+     * crossover is a syntactic operation, which is what "a Theory of skeins
+       that can be manipulated syntactically" asks for.
+
+   STATUS OF THE COLLECTION SORT. `List(Tune)` below is a G2 request. The
+   frozen grammar supplies `HashBag`; the sequence sort has no counterpart
+   yet. Melody needs order, so it needs the list. Flagged for the DDL work.
+--------------------------------------------------------------------------- -}
+
+import "UnivAlg.module" as u
+
+Module Skein {
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Counting
+  --
+  -- Positions and lengths. (Nat, 0, +) is a commutative monoid, so it is
+  -- NOT redefined here: it is `u.CommutativeMonoid` with its carrier renamed
+  -- and its operations re-spelled, exactly as `ParMonoid` treats `PPar` in
+  -- Rholang.module. Everything proved about commutative monoids comes with
+  -- it.
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Counting(cm: u.CommutativeMonoid) {
+    cm
+      Exports {
+        Elem => Nat;
+      }
+      Replacements {
+        Zero => NZero . |- "0" : Nat;
+        Plus => NPlus . m:Nat, n:Nat |- "(" m "+" n ")" : Nat;
+      }
+      Terms {
+        NOne . |- "1" : Nat;
+      }
+  }
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Spigot
+  --
+  -- One side of the instrument. A stream is fully determined by a constant
+  -- and an output base; advancing is a monoid ACTION of (Nat, +, 0) on
+  -- Stream, which is what the two equations below say. That action is the
+  -- formal content of `BoxedSpigot::advance` in dual_spigot.
+  --
+  -- The constants match `spigot_stream`: pi via Gosper's unbounded LFT,
+  -- e and ln2 via Rabinowitz-Wagon mixed-radix carry propagation, phi, and
+  -- Liouville's constant. Bases run 2..36.
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Spigot(k: Counting) {
+    k
+      Types {
+        Const;
+        Base;
+        Stream;
+      }
+      Exports {
+        Const;
+        Base;
+        Stream;
+      }
+      Terms {
+        CPi   . |- "pi"        : Const;
+        CE    . |- "e"         : Const;
+        CPhi  . |- "phi"       : Const;
+        CLn2  . |- "ln2"       : Const;
+        CLiou . |- "liouville" : Const;
+
+        BBase . n:Nat            |- "base" n                  : Base;
+        Tap   . c:Const, b:Base  |- "tap" "(" c "," b ")"     : Stream;
+        Adv   . s:Stream, n:Nat  |- "(" s ">>" n ")"          : Stream;
+      }
+      Equations {
+        (Adv s (NZero)) == s;
+        (Adv (Adv s m) n) == (Adv s (NPlus m n));
+      }
+  }
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Weave
+  --
+  -- The two ribbons. `Twist` swaps which side governs pitch and which
+  -- governs duration -- `std::mem::swap` in `DualStream::twist`.
+  --
+  -- The involution `(Twist (Twist w)) == w` is NOT stated as an equation
+  -- because it is derivable from the one below, and a redundant equation is
+  -- a claim the elaborator would have to discharge twice. It is instead a
+  -- proof obligation on the v0 normaliser, and a proptest.
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Weave(sp: Spigot) {
+    sp
+      Types {
+        Skein;
+      }
+      Exports {
+        Skein;
+      }
+      Terms {
+        Wv    . l:Stream, r:Stream |- "<" l "," r ">"     : Skein;
+        Twist . w:Skein            |- "twist" "(" w ")"   : Skein;
+      }
+      Equations {
+        (Twist (Wv l r)) == (Wv r l);
+      }
+  }
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Melody
+  --
+  -- Concatenation of tunes is associative, has a unit (the rest), and is
+  -- NOT commutative -- so it is `u.Monoid`, the plain one, with the carrier
+  -- renamed to `Tune`.
+  --
+  -- This is the pleasing structural fact about the whole design. Rholang's
+  -- parallel composition takes the COMMUTATIVE monoid and a HashBag, because
+  -- `P | Q == Q | P`. Melody takes the PLAIN monoid and a list, because
+  -- a tune played forwards is not the tune played backwards. F1R3Skein and
+  -- rholang are siblings at different points of one tower.
+  --
+  -- WATCH. This replacement turns binary `Mult` into list-valued `Seq`. The
+  -- associativity and unit equations inherited from `u.Monoid` are still
+  -- written binary, over a now list-valued constructor. The list makes them
+  -- structural, so they are redundant at best and ill-formed at worst. This
+  -- is the open arity-drift question on `Replacements`, and Melody is where
+  -- it bites us. Do not close it here; close it in the DDL.
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Melody(m: u.Monoid) {
+    m
+      Exports {
+        Elem => Tune;
+      }
+      Replacements {
+        One  => Rest . |- "-"                                : Tune;
+        Mult => Seq  . ts:List(Tune) |- "[" ts.*sep(";") "]"  : Tune;
+      }
+  }
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Snips
+  --
+  -- The leaf. `Snip(k, i, j)` is the scissors gesture: fresh spigots from
+  -- the skein's two configurations, fast-forwarded to i, and j-i pairs
+  -- collected. Note that the live cursors are unaffected, which is why a
+  -- snip is a function of the skein and the interval alone -- and therefore
+  -- why a snipped tune compresses to a handful of bytes.
+  --
+  -- The join is over NOTHING. Weave descends from `Counting`, hence from one
+  -- `u.EmptySet`; Melody descends from a SECOND, independent `u.EmptySet`.
+  -- Passing one carrier to both would be the natural-looking mistake and it
+  -- is wrong for the same reason `Rig` may not share a single Monoid: it
+  -- would identify `Nat` with `Tune`, asserting that a position in a digit
+  -- stream and a piece of music are the same thing. The instantiation chain
+  -- in FreeSkein keeps them apart, and the elaborator holds us to it.
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Snips(w: Weave, me: Melody) {
+    { w \/ me }
+      Terms {
+        Snip . k:Skein, i:Nat, j:Nat |- "snip" "(" k "," i "," j ")" : Tune;
+      }
+      Equations {
+        (Snip k i i) == (Rest);
+      }
+  }
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Crossover
+  --
+  -- The genetics. `XPitch(m, f)` takes m's pitches and f's durations. Three
+  -- equations make it a RECTANGULAR BAND: idempotent, associative, and
+  -- absorbing in the middle (xyz = xz). Two consequences:
+  --
+  --   * `XDur` need not exist. The child that takes the father's pitches
+  --     and the mother's durations is just `(XPitch f m)`. The constructor
+  --     count halves and a whole class of duplicate gallery entries is
+  --     removed by normalisation rather than by deduplication.
+  --   * The band laws are a testable property of the EXISTING JavaScript
+  --     `breed()`. If they fail against it, the JavaScript has a bug.
+  --
+  -- `XFold` and `XLift` are the two coin-flipped children: pitch-with-pitch
+  -- folded through base 5 to a duration, and duration-with-duration lifted
+  -- through base 22 to a pitch. They are STOCHASTIC, so each carries an
+  -- explicit seed and is thereby a function of its arguments again. Without
+  -- the seed a term would not faithfully describe its own realisation, and
+  -- the whole "lineage IS the syntax" claim collapses. See decision D-4:
+  -- the alternative is to model them as relations, buying cleaner algebra
+  -- at the cost of non-deterministic realisation.
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Crossover(sn: Snips) {
+    sn
+      Terms {
+        Pad    . t:Tune, n:Nat               |- "pad" "(" t "," n ")"            : Tune;
+        XPitch . m:Tune, f:Tune              |- "(" m "><" f ")"                 : Tune;
+        XFold  . a:Tune, b:Tune, seed:Nat    |- "fold" "(" a "," b "," seed ")"  : Tune;
+        XLift  . a:Tune, b:Tune, seed:Nat    |- "lift" "(" a "," b "," seed ")"  : Tune;
+        Mutate . t:Tune, seed:Nat            |- "mut" "(" t "," seed ")"         : Tune;
+      }
+      Equations {
+        (XPitch t t) == t;
+        (XPitch (XPitch a b) c) == (XPitch a c);
+        (XPitch a (XPitch b c)) == (XPitch a c);
+        (Pad t (NZero)) == t;
+      }
+      Rewrites {
+        RSeq : if S ~> T then (Seq [S, ...rest]) ~> (Seq [T, ...rest]);
+      }
+  }
+
+  -- ═══════════════════════════════════════════════════════════════════════
+  -- Skein
+  -- ═══════════════════════════════════════════════════════════════════════
+
+  Theory Skein(cr: Crossover) {
+    cr
+  }
+
+  -- The instantiation chain. Two independent `EmptySet` instances, `sn` for
+  -- counting and `st` for tunes, is the whole point -- see the note on the
+  -- join in Snips above.
+
+  Theory FreeSkein() {
+    let sn  = u.EmptySet() in (
+    let st  = u.EmptySet() in (
+    let mn  = u.Monoid(sn) in (
+    let mt  = u.Monoid(st) in (
+    let cmn = u.CommutativeMonoid(mn) in (
+    let k   = Counting(cmn) in (
+    let sp  = Spigot(k) in (
+    let w   = Weave(sp) in (
+    let me  = Melody(mt) in (
+    let s   = Snips(w, me) in (
+    let cr  = Crossover(s) in (
+    Skein(cr)
+    )))))))))))
+  }
+
+  theory FreeSkein()
+}
