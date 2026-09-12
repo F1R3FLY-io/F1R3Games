@@ -18,9 +18,6 @@ struct ImmersiveView: View {
     var body: some View {
         RealityView { content in
             content.add(scene.root)
-            // Separately, and untransformed: ghosts carry absolute world
-            // positions and must not inherit the surface's height offset.
-            content.add(scene.ghostRoot)
             model.scene = scene
             scene.setDeckHeight(model.deckHeight)
             // Each ribbon sounds from its own position, so the two streams are

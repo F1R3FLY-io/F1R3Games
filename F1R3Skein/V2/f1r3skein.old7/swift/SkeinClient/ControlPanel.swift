@@ -254,14 +254,6 @@ struct ControlPanel: View {
             Text("debug").font(.caption.bold())
             Text("frames sent \(model.framesSent) · notes heard \(model.notesHeard)")
                 .font(.caption2)
-            // The ribbon chain, end to end: messages received, array lengths on
-            // the wire, lengths after decoding, entities built, entities shown.
-            Text("digits msgs \(model.digitsMessages) · wire L/R "
-                 + "\(model.lastDigitsWire.left)/\(model.lastDigitsWire.right)")
-                .font(.caption2)
-            Text("decoded L/R \(model.leftDigits.count)/\(model.rightDigits.count) · "
-                 + "patches \(model.scenePatches) · shown \(model.sceneEnabled)")
-                .font(.caption2)
             if let h = model.lastHead {
                 Text(String(format: "head roll %.1f°", h.roll * 180 / .pi))
                     .font(.caption2)
@@ -307,13 +299,9 @@ struct ControlPanel: View {
             }
             // Audio is lazily started and may decline; a silent instrument
             // should say why rather than leave M guessing.
-            if let p = model.audioProblem, !model.audioRunning {
+            if let p = model.audioProblem {
                 Label(p, systemImage: "speaker.slash")
                     .font(.caption2).foregroundStyle(.orange)
-            }
-            if let t = model.trackingNote {
-                Label(t, systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption2).foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
                 Button(immersive ? "Exit 3D" : "Enter 3D") {
@@ -347,23 +335,6 @@ struct ControlPanel: View {
                     get: { model.showDebug },
                     set: { model.showDebug = $0 }))
                     .toggleStyle(.button)
-
-                // The immersive world origin is at floor level, so the
-                // surface has to be lifted to where M is. Standing is about
-                // 1.3 m, seated about 1.0 m.
-                if immersive {
-                    HStack(spacing: 6) {
-                        Text("height").font(.caption2).foregroundStyle(.secondary)
-                        Slider(
-                            value: Binding(
-                                get: { Double(model.deckHeight) },
-                                set: { model.setDeckHeight(Float($0)) }),
-                            in: 0.6...2.0)
-                            .frame(width: 120)
-                        Text(String(format: "%.2f m", model.deckHeight))
-                            .font(.caption2).monospacedDigit()
-                    }
-                }
 
                 if case .failed = model.connection {
                     TextField("host", text: $manualHost)

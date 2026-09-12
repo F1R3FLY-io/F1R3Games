@@ -69,32 +69,19 @@ public final class SkeinAudio {
         activateSession()
     }
 
-    /// Try to bring audio up now, reporting whether it worked. Called once the
-    /// immersive space is open, which is the point at which the session is
-    /// reliably available.
     @discardableResult
-    public func startIfPossible() -> Bool {
-        attempts = 0
-        return ensureRunning()
-    }
-
-    /// Best effort, and deliberately **not** a gate.
-    ///
-    /// AVAudioEngine configures the session implicitly, and on this platform
-    /// the explicit call has failed every time (-50, then -19224). Refusing to
-    /// build the graph when it fails meant audio never started at all — the
-    /// precaution was the bug. Try it, note it, carry on.
-    private func activateSession() {
-        if sessionReady { return }
+    private func activateSession() -> Bool {
+        if sessionReady { return true }
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(.playback, mode: .default, options: [])
             try session.setActive(true)
             sessionReady = true
+            lastProblem = nil
+            return true
         } catch {
-            // Recorded for the overlay, but not treated as fatal: the engine
-            // usually starts regardless.
-            lastProblem = "audio session declined (\(error.localizedDescription)); trying anyway"
+            lastProblem = "audio session: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -107,7 +94,7 @@ public final class SkeinAudio {
         guard attempts < maxAttempts else { return false }
         attempts += 1
 
-        activateSession()
+        guard activateSession() else { return false }
 
         let e = engine ?? AVAudioEngine()
         engine = e

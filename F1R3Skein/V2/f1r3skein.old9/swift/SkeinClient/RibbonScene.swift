@@ -25,13 +25,7 @@ import UIKit
 @MainActor
 public final class RibbonScene {
 
-    // Geometry, in M's axes: x right, y up, z away from her.
-    //
-    // RealityKit's forward is NEGATIVE z, so every z here is negated when a
-    // position is written. Laying the surface out at positive z put the whole
-    // thing BEHIND M's head — which looks exactly like nothing rendering, and
-    // cost two rounds of debugging because the hand ghosts use raw ARKit
-    // positions and never pass through this layout.
+    // Geometry, in M's axes: x right, y up, z away.
     //
     // IMPORTANT: in a visionOS ImmersiveSpace the world origin is at FLOOR
     // level, not at the head. Laying the ribbons out around y = 0 puts them at
@@ -164,7 +158,7 @@ public final class RibbonScene {
             let p = patches[i]
             let z = nearZ + Float(i) * patchDepth
             let fade = Float(i) / Float(max(digits.count, 1))
-            p.position = [x, 0, -z]          // RealityKit forward is -z
+            p.position = [x, 0, z]
             let scale = 1.0 - fade * 0.5
             p.scale = [scale, scale, scale]
             p.isEnabled = true
@@ -192,7 +186,7 @@ public final class RibbonScene {
         let mat = UnlitMaterial(color: .init(white: 0.85, alpha: 0.9))
         for i in 0..<visible {
             let e = ModelEntity(mesh: thread, materials: [mat])
-            e.position = [0, 0, -(nearZ + Float(i) * patchDepth)]
+            e.position = [0, 0, nearZ + Float(i) * patchDepth]
             meshLine.addChild(e)
         }
     }
@@ -203,14 +197,14 @@ public final class RibbonScene {
     private func buildOriginMarker() {
         let m = MeshResource.generateSphere(radius: 0.03)
         let e = ModelEntity(mesh: m, materials: [UnlitMaterial(color: .systemPink)])
-        e.position = [0, 0, -nearZ]
+        e.position = [0, 0, nearZ]
         root.addChild(e)
 
         for (x, colour) in [(-ribbonX, UIColor.systemPurple), (ribbonX, UIColor.systemTeal)] {
             let rail = ModelEntity(
                 mesh: .generateBox(size: [0.01, 0.01, farZ - nearZ]),
                 materials: [UnlitMaterial(color: colour)])
-            rail.position = [x, -0.03, -(nearZ + farZ) / 2]
+            rail.position = [x, -0.03, (nearZ + farZ) / 2]
             root.addChild(rail)
         }
     }
@@ -226,7 +220,7 @@ public final class RibbonScene {
     }
 
     public func placeFront(at notch: Int, running: Bool, warning: Bool) {
-        frontMarker.position = [0, 0, -(nearZ + Float(notch) * patchDepth)]
+        frontMarker.position = [0, 0, nearZ + Float(notch) * patchDepth]
         // A head tilt is proprioceptively silent, so freezing must be
         // unmistakable or M will not trust it.
         let opacity: Float = running ? 0.9 : 0.35
@@ -243,7 +237,7 @@ public final class RibbonScene {
             size: [2 * ribbonX, 0.06, length], cornerRadius: 0.004)
         let e = ModelEntity(
             mesh: m, materials: [UnlitMaterial(color: .systemOrange.withAlphaComponent(0.35))])
-        e.position = [0, 0, -(nearZ + Float(near) * patchDepth + length / 2)]
+        e.position = [0, 0, nearZ + Float(near) * patchDepth + length / 2]
         captureHighlight.addChild(e)
         // Lift the copy clear; the band stays where it is.
         var t = e.transform
@@ -265,7 +259,7 @@ public final class RibbonScene {
     }
 
     public var frontWorldPositions: (SIMD3<Float>, SIMD3<Float>) {
-        ([-ribbonX, deckHeight, -nearZ], [ribbonX, deckHeight, -nearZ])
+        ([-ribbonX, 0, nearZ], [ribbonX, 0, nearZ])
     }
 }
 
@@ -303,9 +297,7 @@ final class HandGhosts {
                 root.addChild(n)
                 return n
             }()
-            // Samples arrive in the spec's axes (z away from M); RealityKit's
-            // forward is -z, so convert back for rendering.
-            e.position = [p.x, p.y, -p.z]
+            e.position = [p.x, p.y, p.z]
         }
     }
 }

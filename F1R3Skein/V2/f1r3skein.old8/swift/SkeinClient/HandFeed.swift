@@ -132,15 +132,8 @@ public final class HandFeed {
 
     // MARK: - Conversion
 
-    /// ARKit position to the specification's axes.
-    ///
-    /// The spec has z as depth **away** from M; ARKit's forward is negative z.
-    /// The conversion happens here, once, so the Rust core receives exactly the
-    /// axes it was written and tested against. Two detectors depend on the
-    /// sign: a pull is motion toward M, and the near hand in a snip is the one
-    /// at lower z. Both would be inverted without this.
     private static func v(_ t: simd_float4x4) -> SkeinVec3 {
-        SkeinVec3(t.columns.3.x, t.columns.3.y, -t.columns.3.z)
+        SkeinVec3(t.columns.3.x, t.columns.3.y, t.columns.3.z)
     }
 
     private static func finger(

@@ -45,12 +45,6 @@ public final class SkeinModel {
     public var showDebug = false
     public var framesSent = 0
     public var notesHeard = 0
-    /// Wire-level counts, recorded before the scene is touched, so a rendering
-    /// fault can be told apart from a protocol one.
-    public var digitsMessages = 0
-    public var lastDigitsWire = (left: 0, right: 0)
-    public var scenePatches = 0
-    public var sceneEnabled = 0
     public var lastHead: SkeinHead?
     public var lastLeftHand: SkeinHand?
     public var lastRightHand: SkeinHand?
@@ -177,19 +171,11 @@ public final class SkeinModel {
         switch d["type"] as? String {
 
         case "digits":
-            digitsMessages += 1
-            // Count the raw arrays before any casting, so a bridging failure
-            // shows up as a mismatch rather than as silence.
-            let rawL = (d["left"] as? [Any])?.count ?? -1
-            let rawR = (d["right"] as? [Any])?.count ?? -1
-            lastDigitsWire = (rawL, rawR)
-            leftDigits = (d["left"] as? [NSNumber])?.map { UInt8(clamping: $0.intValue) } ?? []
-            rightDigits = (d["right"] as? [NSNumber])?.map { UInt8(clamping: $0.intValue) } ?? []
+            leftDigits = (d["left"] as? [Int])?.map { UInt8(clamping: $0) } ?? []
+            rightDigits = (d["right"] as? [Int])?.map { UInt8(clamping: $0) } ?? []
             leftPos = d["left_pos"] as? Int ?? leftPos
             rightPos = d["right_pos"] as? Int ?? rightPos
             scene?.update(left: leftDigits, right: rightDigits, base: 22)
-            scenePatches = scene?.patchCount ?? -1
-            sceneEnabled = scene?.enabledPatchCount ?? -1
 
         case "note":
             notesHeard += 1

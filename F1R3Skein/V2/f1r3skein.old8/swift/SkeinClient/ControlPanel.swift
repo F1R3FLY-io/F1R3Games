@@ -254,14 +254,6 @@ struct ControlPanel: View {
             Text("debug").font(.caption.bold())
             Text("frames sent \(model.framesSent) · notes heard \(model.notesHeard)")
                 .font(.caption2)
-            // The ribbon chain, end to end: messages received, array lengths on
-            // the wire, lengths after decoding, entities built, entities shown.
-            Text("digits msgs \(model.digitsMessages) · wire L/R "
-                 + "\(model.lastDigitsWire.left)/\(model.lastDigitsWire.right)")
-                .font(.caption2)
-            Text("decoded L/R \(model.leftDigits.count)/\(model.rightDigits.count) · "
-                 + "patches \(model.scenePatches) · shown \(model.sceneEnabled)")
-                .font(.caption2)
             if let h = model.lastHead {
                 Text(String(format: "head roll %.1f°", h.roll * 180 / .pi))
                     .font(.caption2)

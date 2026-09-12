@@ -326,12 +326,8 @@ pub struct MountPoint {
 }
 
 impl Default for MountPoint {
-    /// Spec axes: x right, y up, z away from M. Just in front of the hands and
-    /// a little below them, between the ribbons. The client converts from
-    /// ARKit's frame (whose forward is -z) when sampling, so this needs no
-    /// adjustment there.
     fn default() -> Self {
-        MountPoint { position: Vec3::new(0.0, 1.15, 0.35) }
+        MountPoint { position: Vec3::new(0.0, -0.15, 0.35) }
     }
 }
 
