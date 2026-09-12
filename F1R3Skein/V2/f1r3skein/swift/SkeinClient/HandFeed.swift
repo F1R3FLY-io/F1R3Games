@@ -40,10 +40,16 @@ public final class HandFeed {
             onAuthorizationDenied?("Hand tracking is not supported on this device.")
             return
         }
-        // Requested explicitly and handled visibly. The previous client called
+        // Request ONLY what actually needs authorizing. WorldTrackingProvider,
+        // used here for head pose, requires none — and asking for an
+        // authorization whose Info.plist usage string is absent throws
+        // NSInternalInconsistencyException, which is fatal and uncatchable
+        // rather than a refusal. Keep this list and the plist keys in step.
+        //
+        // Requested explicitly and handled visibly: the previous client called
         // run() directly and reported denial to the console, so a refused
         // permission looked like a broken app.
-        let result = await session.requestAuthorization(for: [.handTracking, .worldSensing])
+        let result = await session.requestAuthorization(for: [.handTracking])
         for (_, status) in result where status != .allowed {
             onAuthorizationDenied?(
                 "Hand tracking permission is required. Grant it in Settings and relaunch.")

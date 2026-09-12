@@ -23,6 +23,96 @@ provisioning profile makes device installation *fail*, which is a bad thing to
 discover with the headset on. If you do find you need one, add the single key
 in question and re-download the profile.
 
+## Info.plist keys, and why each one is load-bearing
+
+Every one of these has produced a distinct failure during bring-up. They are
+listed with their symptoms so a missing key can be identified from the log
+rather than guessed at.
+
+| Key | Missing symptom |
+|---|---|
+| `NSHandsTrackingUsageDescription` | ARKit authorization refused; app looks broken rather than unpermitted |
+| `NSWorldSensingUsageDescription` | **Fatal.** `NSInternalInconsistencyException` from `ar_session_request_authorization` — an uncatchable throw, not a refusal |
+| `NSLocalNetworkUsageDescription` | Connection blocked at the first packet; looks like a silent timeout |
+| `NSBonjourServices` | `DNSServiceBrowse failed: NoAuth(-65555)`, and **no permission prompt is ever shown** |
+| `UIApplicationSceneManifest` with `UIApplicationSupportsMultipleScenes` | `openImmersiveSpace` refuses: "app does not support multiple scenes" |
+| `CFBundleExecutable` (supplied by Xcode, not by hand) | Build succeeds, install fails with CoreDeviceError 3002 |
+
+Two traps worth stating outright. A `UISceneConfigurations` dictionary in the
+manifest — even an empty one — leaves the process running with **no window ever
+created**, which looks nothing like the multiple-scenes failure but sits one
+line away from it. And the authorization list passed to
+`ARKitSession.requestAuthorization` must match the plist keys present:
+requesting one whose usage string is absent is fatal, so ask only for what is
+needed. `WorldTrackingProvider` needs no authorization at all.
+
+## If the install fails with CoreDeviceError 3002
+
+The build succeeded and the bundle is structurally invalid. The usual cause is
+an `Info.plist` that carries only the app's own keys and omits the ones Xcode
+normally supplies — `CFBundleExecutable` above all. Without it there is nothing
+to launch and the device refuses the bundle.
+
+`project.yml` now has XcodeGen generate a complete plist and merge our keys
+into it, so this should not recur. Confirm after a build:
+
+```sh
+plutil -p ~/Library/Developer/Xcode/DerivedData/F1R3Skein-*/Build/Products/*/\
+F1R3Skein.app/Info.plist | grep -E "CFBundleExecutable|Bonjour|LocalNetwork|Hands"
+```
+
+Four lines. If `CFBundleExecutable` is absent, the plist is hand-written rather
+than generated — `xcodegen generate` again and clean the build folder.
+
+The underlying reason for a 3002 is always nested below it in the Report
+navigator (Command-9); the outer code says nothing on its own.
+
+## If the connection is refused after discovery succeeds
+
+Signature in the Xcode console: `flags=[R.]` in state `SYN_SENT` against
+port 7643, at addresses like `fe80::…` or `2601:…`.
+
+Those are IPv6. Bonjour resolved the engine correctly and the TCP connection
+was then **reset**, meaning nothing was listening at that address. visionOS
+prefers IPv6, so an IPv4-only listener fails here even though discovery worked
+perfectly.
+
+The engine now binds both `[::]:7643` and `0.0.0.0:7643` and logs each. Check
+its output on the Mac:
+
+```
+[engine] listening on [::]:7643
+[engine] listening on 0.0.0.0:7643
+```
+
+If the IPv6 line is missing or reports an error, the Mac has no IPv6 on that
+interface, and the headset must be pointed at the IPv4 address by hand — the
+panel offers a host field when discovery fails.
+
+## If Bonjour browsing fails with `NoAuth(-65555)`
+
+The built app has the wrong Info.plist. Verify it before anything else:
+
+```sh
+# from the built product, wherever DerivedData put it
+plutil -p ~/Library/Developer/Xcode/DerivedData/F1R3Skein-*/Build/Products/\
+Debug-xros/F1R3Skein.app/Info.plist | grep -E "Bonjour|LocalNetwork|Hands"
+```
+
+You should see `NSBonjourServices` with `_f1r3skein._tcp`,
+`NSLocalNetworkUsageDescription` and `NSHandsTrackingUsageDescription`. If they
+are missing, regenerate the project (`xcodegen generate`) — earlier versions of
+`project.yml` carried an `info:` block that overwrote the hand-written plist.
+
+Without `NSBonjourServices` the browse is refused outright and **no permission
+prompt is ever shown**, so there is nothing to grant in Settings. The symptom is
+`nw_browser_fail_on_dns_error_locked ... DNSServiceBrowse failed: NoAuth(-65555)`
+repeating once per retry.
+
+If the keys are present and browsing still fails, the permission was declined
+on a previous launch: Settings → Privacy & Security → Local Network, and enable
+F1R3Skein.
+
 ## Option A — generate the project (recommended)
 
 `project.yml` in this directory is an [XcodeGen](https://github.com/yonaskolb/XcodeGen)
@@ -44,8 +134,12 @@ Then set your team in Signing & Capabilities and press Run.
    is fine, the app declares both scenes itself.
 2. Delete the generated `ContentView.swift` and the generated `App` file.
 3. Drag every `.swift` file from `SkeinClient/` into the target.
-4. Replace the generated `Info.plist` with the one in `SkeinClient/`, or copy
-   the four F1R3Skein-specific keys across.
+4. **Do not replace** the generated `Info.plist` with `SkeinClient/Info.plist`.
+   Xcode's own plist carries `CFBundleExecutable` and other keys the bundle
+   cannot install without. Instead, copy the four F1R3Skein keys —
+   `NSHandsTrackingUsageDescription`, `NSLocalNetworkUsageDescription`,
+   `NSBonjourServices`, `UIFileSharingEnabled` — into it. The supplied
+   `Info.plist` is a reference for those values, not a drop-in replacement.
 5. Set the deployment target to visionOS 2.0 or later and the Swift language
    version to 5.
 6. Remove any `.entitlements` reference. See above.

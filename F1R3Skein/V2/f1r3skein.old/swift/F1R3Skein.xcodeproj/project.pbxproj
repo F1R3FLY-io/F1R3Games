@@ -1,0 +1,331 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		05C02D91EAFDC739C2EB5800 /* SkeinAudio.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6AB8EC6799073A60591A73 /* SkeinAudio.swift */; };
+		1D9B37512479842DD6276832 /* HandFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 330BE2EF44A71A87F5C6BDE1 /* HandFeed.swift */; };
+		2B2E77BA0AB9A0F6CAFDFBAF /* ImmersiveView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E51CED8612864D3A2CFD266 /* ImmersiveView.swift */; };
+		54CB321C6D48CDC723BD1773 /* RibbonScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51A0E8EEDAF29163340F4B80 /* RibbonScene.swift */; };
+		837C558DB704B0E82E5D68A8 /* ControlPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2345E00D94EF718C93831E82 /* ControlPanel.swift */; };
+		B5F22771C0E6C6A30FD14CDD /* SkeinChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4E15105B8693235B669CF1 /* SkeinChannel.swift */; };
+		B795A4A5E580A3768344F4EE /* TraceRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B27B0F125FC39DEF6DB8E11E /* TraceRecorder.swift */; };
+		D76C44895CFF07C0AF88B6CA /* SkeinMessages.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FAA3E622A23D5D693780BEF /* SkeinMessages.swift */; };
+		DD6B1775C21E14C2692E04B8 /* SkeinApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AD5DE3460EC9CDCFC153AD0 /* SkeinApp.swift */; };
+		DFC8D1439A10DCE024745213 /* SkeinModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3153AEFCED452CA05102DFE4 /* SkeinModel.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0E6AB8EC6799073A60591A73 /* SkeinAudio.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeinAudio.swift; sourceTree = "<group>"; };
+		2345E00D94EF718C93831E82 /* ControlPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControlPanel.swift; sourceTree = "<group>"; };
+		3153AEFCED452CA05102DFE4 /* SkeinModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeinModel.swift; sourceTree = "<group>"; };
+		330BE2EF44A71A87F5C6BDE1 /* HandFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HandFeed.swift; sourceTree = "<group>"; };
+		3A2D7FBFE9D87BE1908DE777 /* F1R3Skein.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = F1R3Skein.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		51A0E8EEDAF29163340F4B80 /* RibbonScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RibbonScene.swift; sourceTree = "<group>"; };
+		6D4E15105B8693235B669CF1 /* SkeinChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeinChannel.swift; sourceTree = "<group>"; };
+		7AD5DE3460EC9CDCFC153AD0 /* SkeinApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeinApp.swift; sourceTree = "<group>"; };
+		8FAA3E622A23D5D693780BEF /* SkeinMessages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeinMessages.swift; sourceTree = "<group>"; };
+		9E51CED8612864D3A2CFD266 /* ImmersiveView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmersiveView.swift; sourceTree = "<group>"; };
+		B27B0F125FC39DEF6DB8E11E /* TraceRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TraceRecorder.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		290622A160F2AE753DE1D161 /* SkeinClient */ = {
+			isa = PBXGroup;
+			children = (
+				2345E00D94EF718C93831E82 /* ControlPanel.swift */,
+				330BE2EF44A71A87F5C6BDE1 /* HandFeed.swift */,
+				9E51CED8612864D3A2CFD266 /* ImmersiveView.swift */,
+				51A0E8EEDAF29163340F4B80 /* RibbonScene.swift */,
+				7AD5DE3460EC9CDCFC153AD0 /* SkeinApp.swift */,
+				0E6AB8EC6799073A60591A73 /* SkeinAudio.swift */,
+				6D4E15105B8693235B669CF1 /* SkeinChannel.swift */,
+				8FAA3E622A23D5D693780BEF /* SkeinMessages.swift */,
+				3153AEFCED452CA05102DFE4 /* SkeinModel.swift */,
+				B27B0F125FC39DEF6DB8E11E /* TraceRecorder.swift */,
+			);
+			path = SkeinClient;
+			sourceTree = "<group>";
+		};
+		623E4B754CB643A801289129 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				3A2D7FBFE9D87BE1908DE777 /* F1R3Skein.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		74481882DB87EAEF3DA6964A = {
+			isa = PBXGroup;
+			children = (
+				290622A160F2AE753DE1D161 /* SkeinClient */,
+				623E4B754CB643A801289129 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E15952D4D8F25E2F3B667DEE /* F1R3Skein */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4C44033EEB5847D5D3D66DEA /* Build configuration list for PBXNativeTarget "F1R3Skein" */;
+			buildPhases = (
+				084627530AA31B352043AFB1 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = F1R3Skein;
+			packageProductDependencies = (
+			);
+			productName = F1R3Skein;
+			productReference = 3A2D7FBFE9D87BE1908DE777 /* F1R3Skein.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		6C55BCEE6360673E5DD2C79C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					E15952D4D8F25E2F3B667DEE = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 7D4B619DCB66D254A3BAED10 /* Build configuration list for PBXProject "F1R3Skein" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 74481882DB87EAEF3DA6964A;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 623E4B754CB643A801289129 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E15952D4D8F25E2F3B667DEE /* F1R3Skein */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		084627530AA31B352043AFB1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				837C558DB704B0E82E5D68A8 /* ControlPanel.swift in Sources */,
+				1D9B37512479842DD6276832 /* HandFeed.swift in Sources */,
+				2B2E77BA0AB9A0F6CAFDFBAF /* ImmersiveView.swift in Sources */,
+				54CB321C6D48CDC723BD1773 /* RibbonScene.swift in Sources */,
+				DD6B1775C21E14C2692E04B8 /* SkeinApp.swift in Sources */,
+				05C02D91EAFDC739C2EB5800 /* SkeinAudio.swift in Sources */,
+				B5F22771C0E6C6A30FD14CDD /* SkeinChannel.swift in Sources */,
+				D76C44895CFF07C0AF88B6CA /* SkeinMessages.swift in Sources */,
+				DFC8D1439A10DCE024745213 /* SkeinModel.swift in Sources */,
+				B795A4A5E580A3768344F4EE /* TraceRecorder.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		50905107BFC2D4293BA2EA86 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Release;
+		};
+		556E150F53DDEDB5BF9E04AE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_PREVIEWS = YES;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = xros;
+				SUPPORTED_PLATFORMS = "xros xrsimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 7;
+				XROS_DEPLOYMENT_TARGET = 2.0;
+			};
+			name = Debug;
+		};
+		76A4AEC58657C56DB872D043 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = J2Y62TPKZU;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SkeinClient/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = F1R3Skein;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.f1r3fly.F1R3Skein;
+				SDKROOT = xros;
+				TARGETED_DEVICE_FAMILY = 7;
+			};
+			name = Debug;
+		};
+		885D54D7AEBDE4295B72A2E0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = J2Y62TPKZU;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SkeinClient/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = F1R3Skein;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.f1r3fly.F1R3Skein;
+				SDKROOT = xros;
+				TARGETED_DEVICE_FAMILY = 7;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4C44033EEB5847D5D3D66DEA /* Build configuration list for PBXNativeTarget "F1R3Skein" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				76A4AEC58657C56DB872D043 /* Debug */,
+				885D54D7AEBDE4295B72A2E0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7D4B619DCB66D254A3BAED10 /* Build configuration list for PBXProject "F1R3Skein" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				556E150F53DDEDB5BF9E04AE /* Debug */,
+				50905107BFC2D4293BA2EA86 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 6C55BCEE6360673E5DD2C79C /* Project object */;
+}

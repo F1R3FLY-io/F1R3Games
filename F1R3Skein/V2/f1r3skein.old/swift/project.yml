@@ -1,0 +1,42 @@
+# XcodeGen spec for the F1R3Skein visionOS client.
+#
+#   brew install xcodegen && xcodegen generate && open F1R3Skein.xcodeproj
+#
+# Deliberately carries no .entitlements file: hand tracking and local network
+# access are gated by Info.plist usage strings, and an unrecognised
+# com.apple.developer.* key absent from the provisioning profile makes device
+# installation fail.
+
+name: F1R3Skein
+options:
+  bundleIdPrefix: io.f1r3fly
+  deploymentTarget:
+    visionOS: "2.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SUPPORTED_PLATFORMS: "xros xrsimulator"
+    TARGETED_DEVICE_FAMILY: "7"
+    ENABLE_PREVIEWS: YES
+    # Set this, or select your team in Signing & Capabilities.
+    # DEVELOPMENT_TEAM: XXXXXXXXXX
+
+targets:
+  F1R3Skein:
+    type: application
+    platform: visionOS
+    sources:
+      - path: SkeinClient
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f1r3fly.F1R3Skein
+        INFOPLIST_FILE: SkeinClient/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Automatic
+        # No CODE_SIGN_ENTITLEMENTS. See BUILDING.md.
+    info:
+      path: SkeinClient/Info.plist

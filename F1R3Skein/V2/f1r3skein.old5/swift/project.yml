@@ -1,0 +1,83 @@
+# XcodeGen spec for the F1R3Skein visionOS client.
+#
+#   brew install xcodegen && xcodegen generate && open F1R3Skein.xcodeproj
+#
+# Deliberately carries no .entitlements file: hand tracking and local network
+# access are gated by Info.plist usage strings, and an unrecognised
+# com.apple.developer.* key absent from the provisioning profile makes device
+# installation fail.
+
+name: F1R3Skein
+options:
+  bundleIdPrefix: io.f1r3fly
+  deploymentTarget:
+    visionOS: "2.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    SUPPORTED_PLATFORMS: "xros xrsimulator"
+    TARGETED_DEVICE_FAMILY: "7"
+    ENABLE_PREVIEWS: YES
+    # Set this, or select your team in Signing & Capabilities.
+    # DEVELOPMENT_TEAM: XXXXXXXXXX
+
+targets:
+  F1R3Skein:
+    type: application
+    platform: visionOS
+    sources:
+      - path: SkeinClient
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f1r3fly.F1R3Skein
+        CODE_SIGN_STYLE: Automatic
+        # No CODE_SIGN_ENTITLEMENTS. See BUILDING.md.
+
+    # Let XcodeGen generate the plist and merge our keys into it. It supplies
+    # CFBundleExecutable, CFBundleIdentifier, CFBundleInfoDictionaryVersion,
+    # CFBundleName, CFBundlePackageType and the version strings, and sets
+    # INFOPLIST_FILE for us.
+    #
+    # Two failure modes to avoid, both seen on the way here:
+    #   * `info:` with a path but no `properties` generates a STUB, silently
+    #     overwriting a hand-written plist. Symptom: DNSServiceBrowse fails
+    #     with NoAuth(-65555) and no permission prompt is ever shown.
+    #   * A hand-written plist with only the app's own keys omits
+    #     CFBundleExecutable, so the bundle is structurally invalid. Symptom:
+    #     the build succeeds and the install fails with CoreDeviceError 3002.
+    #
+    # SkeinClient/Info.plist is kept for anyone building the target by hand
+    # (BUILDING.md option B) and is excluded from sources above.
+    info:
+      path: SkeinClient/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: F1R3Skein
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+
+        # Without this, ARKit authorization is refused and the app looks
+        # broken rather than unpermitted.
+        NSHandsTrackingUsageDescription:
+          F1R3Skein reads your hand positions so you can pull, zip and cut the ribbons.
+
+        # Without these two, visionOS blocks the connection at the first packet
+        # and the failure looks like a silent timeout.
+        NSLocalNetworkUsageDescription:
+          F1R3Skein finds the instrument engine running on your Mac over the local network.
+        NSBonjourServices:
+          - _f1r3skein._tcp
+
+        # NO UIApplicationSceneManifest. A SwiftUI-lifecycle app declares its
+        # scenes in the App body; an explicit manifest with an empty
+        # UISceneConfigurations dictionary can leave the process running with
+        # no window ever created — the app launches, nothing appears, and
+        # nothing is logged.
+
+        # Traces land in Documents; exposing them lets the gesture corpus come
+        # off the device with the Files app rather than another build.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true

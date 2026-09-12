@@ -34,9 +34,66 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.f1r3fly.F1R3Skein
-        INFOPLIST_FILE: SkeinClient/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
         CODE_SIGN_STYLE: Automatic
         # No CODE_SIGN_ENTITLEMENTS. See BUILDING.md.
+
+    # Let XcodeGen generate the plist and merge our keys into it. It supplies
+    # CFBundleExecutable, CFBundleIdentifier, CFBundleInfoDictionaryVersion,
+    # CFBundleName, CFBundlePackageType and the version strings, and sets
+    # INFOPLIST_FILE for us.
+    #
+    # Two failure modes to avoid, both seen on the way here:
+    #   * `info:` with a path but no `properties` generates a STUB, silently
+    #     overwriting a hand-written plist. Symptom: DNSServiceBrowse fails
+    #     with NoAuth(-65555) and no permission prompt is ever shown.
+    #   * A hand-written plist with only the app's own keys omits
+    #     CFBundleExecutable, so the bundle is structurally invalid. Symptom:
+    #     the build succeeds and the install fails with CoreDeviceError 3002.
+    #
+    # SkeinClient/Info.plist is kept for anyone building the target by hand
+    # (BUILDING.md option B) and is excluded from sources above.
     info:
-      path: SkeinClient/Info.plist
+      path: SkeinClient/Generated-Info.plist
+      properties:
+        CFBundleDisplayName: F1R3Skein
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+
+        # Without this, ARKit authorization is refused and the app looks
+        # broken rather than unpermitted.
+        NSHandsTrackingUsageDescription:
+          F1R3Skein reads your hand positions so you can pull, zip and cut the ribbons.
+
+        # Required because the app runs a WorldTrackingProvider for head pose,
+        # which is what the halt gesture reads. Requesting an authorization
+        # whose usage string is absent throws NSInternalInconsistencyException
+        # and kills the app — it is fatal and uncatchable, not a refusal.
+        NSWorldSensingUsageDescription:
+          F1R3Skein reads your head orientation so a tilt can halt and resume the music.
+
+        # Without these two, visionOS blocks the connection at the first packet
+        # and the failure looks like a silent timeout.
+        NSLocalNetworkUsageDescription:
+          F1R3Skein finds the instrument engine running on your Mac over the local network.
+        NSBonjourServices:
+          - _f1r3skein._tcp
+
+        # The manifest must be present, and must declare multiple-scene
+        # support: this app runs a WindowGroup and an ImmersiveSpace at the
+        # same time, and without this flag openImmersiveSpace refuses with
+        # "Unable to open an immersive space when the app does not support
+        # multiple scenes".
+        #
+        # What must NOT appear here is a UISceneConfigurations dictionary. A
+        # SwiftUI-lifecycle app declares its scenes in the App body, and an
+        # empty configurations dictionary leaves the process running with no
+        # window ever created — the app launches, nothing appears, nothing is
+        # logged. Both failure modes were hit on the way here; they look
+        # nothing alike and have adjacent causes.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+
+        # Traces land in Documents; exposing them lets the gesture corpus come
+        # off the device with the Files app rather than another build.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true

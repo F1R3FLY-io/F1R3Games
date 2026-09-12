@@ -21,6 +21,12 @@
     <key>NSHandsTrackingUsageDescription</key>
     <string>F1R3Skein reads your hand positions so you can pull, zip and cut the ribbons.</string>
 
+    <!-- Required for the WorldTrackingProvider used for head pose, which is
+         what the halt gesture reads. Requesting an authorization whose usage
+         string is missing throws and kills the app. -->
+    <key>NSWorldSensingUsageDescription</key>
+    <string>F1R3Skein reads your head orientation so a tilt can halt and resume the music.</string>
+
     <!-- Without these two, visionOS blocks the connection at the first packet
          and the failure looks like a silent timeout. -->
     <key>NSLocalNetworkUsageDescription</key>
@@ -30,12 +36,14 @@
         <string>_f1r3skein._tcp</string>
     </array>
 
+    <!-- Required: the app runs a WindowGroup and an ImmersiveSpace at once,
+         and openImmersiveSpace refuses without this flag. Do NOT add a
+         UISceneConfigurations dictionary here — an empty one leaves the
+         process running with no window ever created. -->
     <key>UIApplicationSceneManifest</key>
     <dict>
-        <key>UIApplicationPreferredDefaultSceneSessionRole</key>
-        <string>UIWindowSceneSessionRoleApplication</string>
-        <key>UISceneConfigurations</key>
-        <dict/>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <true/>
     </dict>
     <key>UIRequiredDeviceCapabilities</key>
     <array>

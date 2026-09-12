@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>F1R3Skein</string>
+    <key>CFBundleDisplayName</key>
+    <string>F1R3Skein</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+
+    <!-- Without this, ARKit authorization is refused and the app looks broken
+         rather than unpermitted. -->
+    <key>NSHandsTrackingUsageDescription</key>
+    <string>F1R3Skein reads your hand positions so you can pull, zip and cut the ribbons.</string>
+
+    <!-- Without these two, visionOS blocks the connection at the first packet
+         and the failure looks like a silent timeout. -->
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>F1R3Skein finds the instrument engine running on your Mac over the local network.</string>
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_f1r3skein._tcp</string>
+    </array>
+
+    <!-- Deliberately no UIApplicationSceneManifest: a SwiftUI-lifecycle app
+         declares its scenes in the App body, and an explicit manifest with an
+         empty UISceneConfigurations dictionary can leave the process running
+         with no window ever created. -->
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>arm64</string>
+    </array>
+    <!-- Traces are written to Documents; exposing them lets you pull the
+         gesture corpus off the device without a build. -->
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+</dict>
+</plist>
