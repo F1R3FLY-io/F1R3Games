@@ -30,6 +30,14 @@ struct SkeinApp: App {
         }
         .defaultSize(width: 560, height: 620)
 
+        // A second window, so instrument controls do not crowd the playing
+        // controls.
+        WindowGroup(id: "sound") {
+            SoundPanel()
+                .environment(model)
+        }
+        .defaultSize(width: 380, height: 460)
+
         ImmersiveSpace(id: "ribbons") {
             ImmersiveView()
                 .environment(model)

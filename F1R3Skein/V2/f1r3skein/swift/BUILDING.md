@@ -23,6 +23,27 @@ provisioning profile makes device installation *fail*, which is a bad thing to
 discover with the headset on. If you do find you need one, add the single key
 in question and re-download the profile.
 
+## The sound bank
+
+The app expects `GeneralUser-GS.sf2` as a bundle resource. It is not in the
+repository — 32 MB of binary does not belong in git — so fetch it once and drop
+it in:
+
+```sh
+mkdir -p swift/SkeinClient/Resources
+cp /path/to/GeneralUser-GS.sf2 swift/SkeinClient/Resources/
+```
+
+XcodeGen picks up non-source files under the target path as resources
+automatically; for a hand-built target, add it to Copy Bundle Resources.
+
+**`AVAudioUnitSampler` loads `.sf2` and `.dls` only — not `.sf3`.** The
+Ogg-compressed format fails to load silently, which matters because several of
+the best free banks ship that way. Convert first if you want one of them.
+
+Without the bank the app still plays: the sampler falls back to a bare default
+tone, and the panel says the bank was not found.
+
 ## Info.plist keys, and why each one is load-bearing
 
 Every one of these has produced a distinct failure during bring-up. They are

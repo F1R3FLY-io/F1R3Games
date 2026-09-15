@@ -20,6 +20,7 @@ import simd
 struct ControlPanel: View {
 
     @Environment(SkeinModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.openImmersiveSpace) private var openImmersive
     @Environment(\.dismissImmersiveSpace) private var dismissImmersive
 
@@ -347,6 +348,8 @@ struct ControlPanel: View {
                     get: { model.showDebug },
                     set: { model.showDebug = $0 }))
                     .toggleStyle(.button)
+
+                Button("Sound") { openWindow(id: "sound") }
 
                 // No height control: the surface follows M's hands. Only the
                 // spools are placed, and this puts them back in front of her.

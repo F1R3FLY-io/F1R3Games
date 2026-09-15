@@ -1,0 +1,14 @@
+{
+  "pull":     { "velocity_min": 0.25, "step_divisor": 0.15, "cooldown": 0.08 },
+  "zip":      { "distance": 0.10, "unzip_distance": 0.22, "closing_window": 0.30,
+                "closing_min": 0.10, "closing_max": 1.20,
+                "tempo_min_bpm": 50, "tempo_max_bpm": 200,
+                "frontier_max": 1024, "frontier_warn": 0.15 },
+  "twist":    { "height_delta": 0.06, "hold_frames": 8 },
+  "halt":     { "roll_fire": 0.2618, "roll_rearm": 0.1047, "hold": 0.25 },
+  "scissors": { "extended": 0.80, "curled": 0.55, "spread": 0.40,
+                "hold_frames": 5, "cooldown": 0.60 },
+  "loop_":    { "window": 1.4, "min_radius": 0.04, "radius_variance": 0.35,
+                "plane_residual": 0.30, "cooldown": 0.80 },
+  "mount":    { "radius": 0.12, "hold_frames": 6, "cooldown": 0.50 }
+}

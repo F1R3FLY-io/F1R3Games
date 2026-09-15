@@ -37,6 +37,20 @@ public final class SkeinAudio {
 
     private var engine: AVAudioEngine?
     private var sampler: AVAudioUnitSampler?
+    private var delayNode: AVAudioUnitDelay?
+    private var reverbNode: AVAudioUnitReverb?
+
+    /// Timbre. Changing it reloads the bank program; it never touches the
+    /// audio graph, so it is safe mid-performance.
+    public private(set) var voice: Voice = .kalimba
+    /// Effects are bypassed rather than removed, so toggling is instant and
+    /// the graph never has to be rebuilt.
+    public private(set) var delayOn = false
+    public private(set) var reverbOn = false
+    /// Tempo of the current mesh, so the delay can lock to the zip wave rather
+    /// than smearing against it.
+    private var tempoBPM = 96
+    private var bankLoaded = false
 
     private var sessionReady = false
     private var attempts = 0
@@ -123,11 +137,33 @@ public final class SkeinAudio {
 
         if sampler == nil {
             let s = AVAudioUnitSampler()
+            let d = AVAudioUnitDelay()
+            let r = AVAudioUnitReverb()
             e.attach(s)
+            e.attach(d)
+            e.attach(r)
+
+            // Sampler -> delay -> reverb -> mixer. Both effects sit in the
+            // chain permanently and are bypassed when off: inserting and
+            // removing nodes at runtime means rebuilding the graph, which is
+            // exactly the operation that crashed this class before.
             let format = AVAudioFormat(
                 standardFormatWithSampleRate: outFormat.sampleRate, channels: 2)
-            e.connect(s, to: e.mainMixerNode, format: format)
+            e.connect(s, to: d, format: format)
+            e.connect(d, to: r, format: format)
+            e.connect(r, to: e.mainMixerNode, format: format)
+
+            r.loadFactoryPreset(.mediumHall)
+            r.wetDryMix = 28
+            d.feedback = 32
+            d.wetDryMix = 22
+            d.lowPassCutoff = 6_000
+
             sampler = s
+            delayNode = d
+            reverbNode = r
+            applyBypass()
+            applyDelayTime()
         }
 
         do {
@@ -136,6 +172,7 @@ public final class SkeinAudio {
             try? AVAudioSession.sharedInstance().setPreferredIOBufferDuration(0.005)
             e.prepare()
             try e.start()
+            loadBankIfNeeded()
             lastProblem = nil
             attempts = 0
             return true
@@ -156,6 +193,69 @@ public final class SkeinAudio {
     }
 
     // MARK: - Playing
+
+    // MARK: - Timbre
+
+    /// Load the General MIDI bank. `AVAudioUnitSampler` accepts .sf2 and .dls
+    /// only — an .sf3 (Ogg-compressed) bank fails silently, which is worth
+    /// knowing because the best-known free banks ship in that format.
+    private func loadBankIfNeeded() {
+        guard !bankLoaded, let s = sampler else { return }
+        guard let url = Bundle.main.url(
+            forResource: "GeneralUser-GS", withExtension: "sf2")
+        else {
+            lastProblem = "sound bank not found in bundle; using the default tone"
+            return
+        }
+        do {
+            try s.loadSoundBankInstrument(
+                at: url,
+                program: voice.program,
+                bankMSB: UInt8(kAUSampler_DefaultMelodicBankMSB),
+                bankLSB: UInt8(kAUSampler_DefaultBankLSB))
+            bankLoaded = true
+        } catch {
+            lastProblem = "sound bank: \(error.localizedDescription)"
+        }
+    }
+
+    public func setVoice(_ v: Voice) {
+        voice = v
+        bankLoaded = false
+        allNotesOff()
+        loadBankIfNeeded()
+    }
+
+    // MARK: - Effects
+
+    public func setDelay(_ on: Bool) {
+        delayOn = on
+        applyBypass()
+    }
+
+    public func setReverb(_ on: Bool) {
+        reverbOn = on
+        applyBypass()
+    }
+
+    private func applyBypass() {
+        delayNode?.bypass = !delayOn
+        reverbNode?.bypass = !reverbOn
+    }
+
+    /// A dotted eighth at the mesh tempo. Locking to the wave makes the
+    /// repeats reinforce the pulse instead of blurring across it.
+    private func applyDelayTime() {
+        guard let d = delayNode else { return }
+        let beat = 60.0 / Double(max(tempoBPM, 1))
+        d.delayTime = min(max(beat * 0.75, 0.02), 2.0)
+    }
+
+    public func setTempo(_ bpm: Int) {
+        guard bpm > 0, bpm != tempoBPM else { return }
+        tempoBPM = bpm
+        applyDelayTime()
+    }
 
     public func setProgram(_ program: UInt8) {
         guard ensureRunning(), let s = sampler else { return }

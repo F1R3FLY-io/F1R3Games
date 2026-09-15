@@ -117,6 +117,27 @@ public final class SkeinModel {
         audio.position(left: left, right: right)
     }
 
+    // MARK: - Sound
+
+    public var voice: Voice = .kalimba
+    public var delayOn = false
+    public var reverbOn = false
+
+    public func setVoice(_ v: Voice) {
+        voice = v
+        audio.setVoice(v)
+    }
+
+    public func setDelay(_ on: Bool) {
+        delayOn = on
+        audio.setDelay(on)
+    }
+
+    public func setReverb(_ on: Bool) {
+        reverbOn = on
+        audio.setReverb(on)
+    }
+
     /// Put the spools back in front of M, wherever she is now.
     public func recentre() {
         scene?.recentre()
@@ -212,6 +233,9 @@ public final class SkeinModel {
             let previous = zip
             zip = ZipState(d)
             if !previous.zipped && zip.zipped { firstMeshILeft = leftPos }
+            // A mesh has one tempo for its life; the delay follows it so the
+            // repeats lock to the zip wave.
+            if zip.tempo > 0 { audio.setTempo(zip.tempo) }
             scene?.placeFront(
                 at: zip.front, running: zip.running, warning: zip.warning)
             if let max = budgetMax {
