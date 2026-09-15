@@ -51,6 +51,17 @@ public enum Scale: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Recover the pairing from the engine's pitch-map name, so the panel can
+    /// follow the engine rather than assert its own guess.
+    public static func from(pitchMap: String) -> Scale? {
+        switch pitchMap {
+        case "pentatonic_minor", "pentatonic_major": return .pentatonic
+        case "major", "minor", "dorian": return .diatonic
+        case "chromatic": return .chromatic
+        default: return nil
+        }
+    }
+
     public var note: String {
         switch self {
         case .pentatonic: return "sparse, forgiving of any interval"

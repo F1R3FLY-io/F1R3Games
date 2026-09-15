@@ -15,42 +15,104 @@
 //! different scales is an operation on material.
 
 use serde::{Deserialize, Serialize};
-use skein_spigot::{DigitCache, SpigotConfig};
+use skein_spigot::{Constant, DigitCache, SpigotConfig};
 
 // ------------------------------------------------------------------- the weave
 
-/// The pair of ribbons. `Weave { pitch, duration }` after normalisation:
-/// the first component governs pitch, the second duration.
+/// The pair of ribbons.
+///
+/// **Roles are positional and hold the bases; only the constants move.**
+///
+/// The left role always governs pitch and generates in the scale's base — 16,
+/// 22 or 37, being three octaves of a scale plus a rest. The right role always
+/// governs duration and generates in base 5, exclusively.
+///
+/// A twist exchanges which constant occupies which role. The bases stay where
+/// they are, so a twist also changes what each spigot emits: pi stops
+/// producing base-22 digits and starts producing base-5 ones. That is a more
+/// violent musical event than it looks, and it is the intent.
+///
+/// This is why a `Skein` is not a pair of `SpigotConfig`s. A configuration is
+/// not a thing that travels intact: what moves is the constant alone, and it
+/// takes on the base of wherever it lands.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Skein {
-    /// `Wv . l:Stream, r:Stream |- "<" l "," r ">" : Skein`
-    Weave { left: SpigotConfig, right: SpigotConfig },
+    /// `Wv . pitch:Const, duration:Const, pb:Nat, db:Nat |- ... : Skein`
+    Weave {
+        /// The constant currently in the pitch role.
+        pitch: Constant,
+        /// The constant currently in the duration role.
+        duration: Constant,
+        /// The pitch role's base. Three octaves of a scale plus a rest.
+        pitch_base: u32,
+        /// The duration role's base. Always 5.
+        duration_base: u32,
+    },
     /// `Twist . w:Skein |- "twist" "(" w ")" : Skein`
     Twist(Box<Skein>),
 }
 
+/// The duration role generates in base 5 and nothing varies it. Named rather
+/// than written as a literal, so the invariant is greppable.
+pub const DURATION_BASE: u32 = 5;
+
 impl Skein {
-    pub fn weave(left: SpigotConfig, right: SpigotConfig) -> Self {
-        Skein::Weave { left, right }
+    pub fn weave(pitch: Constant, duration: Constant, pitch_base: u32) -> Self {
+        Skein::Weave {
+            pitch,
+            duration,
+            pitch_base,
+            duration_base: DURATION_BASE,
+        }
     }
 
     pub fn twist(self) -> Self {
         Skein::Twist(Box::new(self))
     }
 
-    /// Equation: `(Twist (Wv l r)) == (Wv r l)`.
+    /// Equation: `(Twist (Wv p d pb db)) == (Wv d p pb db)`.
     ///
-    /// The involution `Twist(Twist w) == w` is a consequence rather than a
-    /// separate equation, and is checked by test.
+    /// The constants exchange; the bases do not. Stating it this way makes the
+    /// involution `Twist(Twist w) == w` a consequence rather than a separate
+    /// equation.
     pub fn normalise(&self) -> (SpigotConfig, SpigotConfig) {
+        let (p, d, pb, db) = self.roles();
+        (
+            SpigotConfig { constant: p, base: pb },
+            SpigotConfig { constant: d, base: db },
+        )
+    }
+
+    /// `(pitch constant, duration constant, pitch base, duration base)`.
+    pub fn roles(&self) -> (Constant, Constant, u32, u32) {
         match self {
-            Skein::Weave { left, right } => (*left, *right),
+            Skein::Weave { pitch, duration, pitch_base, duration_base } => {
+                (*pitch, *duration, *pitch_base, *duration_base)
+            }
             Skein::Twist(inner) => {
-                let (l, r) = inner.normalise();
-                (r, l)
+                let (p, d, pb, db) = inner.roles();
+                // Only the constants swap.
+                (d, p, pb, db)
             }
         }
+    }
+
+    /// The configuration of the pitch role.
+    pub fn pitch_config(&self) -> SpigotConfig {
+        self.normalise().0
+    }
+
+    /// The configuration of the duration role.
+    pub fn duration_config(&self) -> SpigotConfig {
+        self.normalise().1
+    }
+
+    /// Re-base the pitch role, leaving the constants and the duration base
+    /// alone.
+    pub fn with_pitch_base(&self, base: u32) -> Skein {
+        let (p, d, _, db) = self.roles();
+        Skein::Weave { pitch: p, duration: d, pitch_base: base, duration_base: db }
     }
 }
 
@@ -138,9 +200,14 @@ impl Tune {
 
             Tune::Snip { n: 0, .. } => Tune::Rest,
             Tune::Snip { skein, i_l, i_r, n } => {
-                let (l, r) = skein.normalise();
+                let (p, d, pb, db) = skein.roles();
                 Tune::Snip {
-                    skein: Skein::weave(l, r),
+                    skein: Skein::Weave {
+                        pitch: p,
+                        duration: d,
+                        pitch_base: pb,
+                        duration_base: db,
+                    },
                     i_l: *i_l,
                     i_r: *i_r,
                     n: *n,
@@ -448,7 +515,8 @@ mod tests {
     }
 
     fn sk() -> Skein {
-        Skein::weave(cfg(Constant::Pi, 22), cfg(Constant::E, 5))
+        // pi in the pitch role at base 22, e in the duration role at base 5.
+        Skein::weave(Constant::Pi, Constant::E, 22)
     }
 
     #[test]
@@ -458,10 +526,35 @@ mod tests {
     }
 
     #[test]
-    fn twist_swaps_the_roles() {
-        let (l, r) = sk().normalise();
-        let (tl, tr) = sk().twist().normalise();
-        assert_eq!((tl, tr), (r, l));
+    fn twist_exchanges_constants_but_not_bases() {
+        // The bases belong to the ROLES. A twist puts e in the pitch role — so
+        // e now generates in base 22 — and pi in the duration role at base 5.
+        // Swapping whole configurations would give five pitches and
+        // twenty-two durations, which is precisely backwards.
+        let before = sk().normalise();
+        assert_eq!(before.0, cfg(Constant::Pi, 22));
+        assert_eq!(before.1, cfg(Constant::E, 5));
+
+        let after = sk().twist().normalise();
+        assert_eq!(after.0, cfg(Constant::E, 22), "e takes the pitch base");
+        assert_eq!(after.1, cfg(Constant::Pi, 5), "pi takes the duration base");
+    }
+
+    #[test]
+    fn the_duration_base_never_varies() {
+        for base in [16u32, 22, 37] {
+            let k = Skein::weave(Constant::Pi, Constant::E, base);
+            assert_eq!(k.duration_config().base, super::DURATION_BASE);
+            assert_eq!(k.pitch_config().base, base);
+            assert_eq!(k.twist().duration_config().base, super::DURATION_BASE);
+        }
+    }
+
+    #[test]
+    fn rebasing_leaves_the_constants_alone() {
+        let k = sk().with_pitch_base(16);
+        assert_eq!(k.pitch_config(), cfg(Constant::Pi, 16));
+        assert_eq!(k.duration_config(), cfg(Constant::E, 5));
     }
 
     #[test]

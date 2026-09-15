@@ -194,15 +194,20 @@ public final class RibbonScene {
             + rightPatches.filter { $0.isEnabled }.count
     }
 
-    public func update(left: [UInt8], right: [UInt8], base: UInt8) {
+    /// Each ribbon carries its own base: the pitch role varies with the scale,
+    /// the duration role is always 5. Colouring both against one number made
+    /// the duration ribbon occupy a fraction of the hue wheel.
+    public func update(
+        left: [UInt8], right: [UInt8], leftBase: UInt8, rightBase: UInt8
+    ) {
         lastLeftCount = left.count
         lastRightCount = right.count
         let nearL = mounted ? mountLeft : leftAnchor
         let nearR = mounted ? mountRight : rightAnchor
         sync(&leftPatches, &leftDigits, left, into: leftRibbon,
-             near: nearL, spool: spoolLeft, base: base)
+             near: nearL, spool: spoolLeft, base: leftBase)
         sync(&rightPatches, &rightDigits, right, into: rightRibbon,
-             near: nearR, spool: spoolRight, base: base)
+             near: nearR, spool: spoolRight, base: rightBase)
     }
 
     private func sync(

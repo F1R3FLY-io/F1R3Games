@@ -37,6 +37,11 @@ public final class SkeinModel {
     public var rightDigits: [UInt8] = []
     public var leftPos = 0
     public var rightPos = 0
+    /// Each ribbon's own base. The pitch role varies with the scale; the
+    /// duration role is always 5. Hardcoding 22 coloured both ribbons against
+    /// the wrong vocabulary.
+    public var leftBase: UInt8 = 22
+    public var rightBase: UInt8 = 5
 
     // Tray
     public var tray: [TrayEntry] = []
@@ -68,7 +73,13 @@ public final class SkeinModel {
 
     public init() {
         channel.onState = { [weak self] s in
-            Task { @MainActor in self?.connection = s }
+            Task { @MainActor in
+                self?.connection = s
+                // Assert the panel's scale on connect. Without this the panel
+                // shows one pairing and the engine plays another, and nothing
+                // reconciles them until M happens to change it.
+                if case .ready = s { self?.setScale(self?.scale ?? .diatonic) }
+            }
         }
         channel.onMessage = { [weak self] dict in
             Task { @MainActor in self?.handle(dict) }
@@ -226,7 +237,11 @@ public final class SkeinModel {
             rightDigits = (d["right"] as? [NSNumber])?.map { UInt8(clamping: $0.intValue) } ?? []
             leftPos = d["left_pos"] as? Int ?? leftPos
             rightPos = d["right_pos"] as? Int ?? rightPos
-            scene?.update(left: leftDigits, right: rightDigits, base: 22)
+            leftBase = UInt8(clamping: d["left_base"] as? Int ?? 22)
+            rightBase = UInt8(clamping: d["right_base"] as? Int ?? 5)
+            scene?.update(
+                left: leftDigits, right: rightDigits,
+                leftBase: leftBase, rightBase: rightBase)
             scenePatches = scene?.patchCount ?? -1
             sceneEnabled = scene?.enabledPatchCount ?? -1
 
@@ -284,6 +299,8 @@ public final class SkeinModel {
             rightLabel = d["right_label"] as? String ?? rightLabel
             pitchMap = d["pitch_map"] as? String ?? pitchMap
             durationMap = d["duration_map"] as? String ?? durationMap
+            // The engine is authoritative about interpretation too.
+            if let s = Scale.from(pitchMap: pitchMap), s != scale { scale = s }
 
         case "status":
             status = d["text"] as? String ?? ""

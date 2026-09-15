@@ -251,40 +251,14 @@ impl Session {
         //
         // The spool holds the future: the present section is the ribbon
         // between M's hands and the spool, which is material that has not been
-        // consumed yet. Showing `[p - width, p)` was doubly wrong — it
-        // displayed what had already passed, and it was empty whenever the
-        // cursor sat at zero, which is exactly where a stream change leaves it.
-        // The ribbons would disappear until something advanced them.
-        let left = self
-            .instrument
-            .material(&Tune::snip(
-                skein_core::term::Skein::weave(l_cfg, r_cfg),
-                p_l,
-                p_r,
-                RIBBON_WIDTH,
-            ))
-            .cells
-            .iter()
-            .map(|c| match c {
-                skein_core::term::Cell::Sound { p, .. } => *p,
-                skein_core::term::Cell::Silence { .. } => 0,
-            })
-            .collect::<Vec<u8>>();
-        let right = self
-            .instrument
-            .material(&Tune::snip(
-                skein_core::term::Skein::weave(r_cfg, l_cfg),
-                p_r,
-                p_l,
-                RIBBON_WIDTH,
-            ))
-            .cells
-            .iter()
-            .map(|c| match c {
-                skein_core::term::Cell::Sound { p, .. } => *p,
-                skein_core::term::Cell::Silence { .. } => 0,
-            })
-            .collect::<Vec<u8>>();
+        // consumed yet. A backward window also emptied whenever the cursor sat
+        // at zero, which is exactly where a stream change leaves it.
+        //
+        // Each role is read directly. Building a `Snip` with the
+        // configurations swapped to get the other ribbon conflated roles with
+        // ribbons, and showed the same constant on both.
+        let left = self.instrument.ribbon(true, p_l, RIBBON_WIDTH);
+        let right = self.instrument.ribbon(false, p_r, RIBBON_WIDTH);
 
         let key = (left.clone(), right.clone(), p_l, p_r);
         if self.last_digits.as_ref() == Some(&key) {
@@ -298,6 +272,8 @@ impl Session {
             right,
             left_pos: p_l,
             right_pos: p_r,
+            left_base: l_cfg.base,
+            right_base: r_cfg.base,
         }]
     }
 
@@ -390,6 +366,71 @@ mod tests {
         let (l, r) = found.expect("digits should be sent at rest");
         assert_eq!(l, RIBBON_WIDTH, "left ribbon empty at cursor zero");
         assert_eq!(r, RIBBON_WIDTH, "right ribbon empty at cursor zero");
+    }
+
+    #[test]
+    fn each_ribbon_shows_its_own_stream() {
+        // Both ribbons showed pi once the bases differed, because the right
+        // ribbon was read through a Snip term with the configs swapped.
+        let mut s = Session::new(
+            cfg(Constant::Pi, 16),
+            cfg(Constant::E, 5),
+            Calibration::default(),
+        );
+        let mut got = None;
+        for _ in 0..8 {
+            for m in s.tick(0.05) {
+                if let EngineMsg::Digits {
+                    left, right, left_base, right_base, ..
+                } = m
+                {
+                    got = Some((left, right, left_base, right_base));
+                }
+            }
+        }
+        let (l, r, lb, rb) = got.expect("digits");
+        assert_eq!((lb, rb), (16, 5), "each ribbon reports its own base");
+        assert!(l.iter().any(|d| *d >= 5), "left should use the full base 16");
+        assert!(r.iter().all(|d| *d < 5), "right must stay inside base 5");
+        assert_ne!(l[..8], r[..8], "the two ribbons are different streams");
+    }
+
+    #[test]
+    fn the_two_ribbons_are_different_streams() {
+        // They showed the same constant twice, because each ribbon's digits
+        // were fetched through a Snip term with the configurations swapped.
+        let mut s = session();
+        let mut got = None;
+        for _ in 0..8 {
+            for m in s.tick(0.05) {
+                if let EngineMsg::Digits { left, right, left_base, right_base, .. } = m {
+                    got = Some((left, right, left_base, right_base));
+                }
+            }
+        }
+        let (l, r, lb, rb) = got.expect("digits");
+        assert_eq!(lb, 22, "pitch role carries the scale base");
+        assert_eq!(rb, 5, "duration role is always base 5");
+        assert!(r.iter().all(|d| (*d as u32) < 5), "right ribbon must be base 5");
+        assert!(l.iter().any(|d| *d >= 5), "left ribbon should exceed base 5");
+        assert_ne!(l[..10], r[..10], "the ribbons are pi and e, not pi twice");
+    }
+
+    #[test]
+    fn a_twist_moves_the_constants_and_leaves_the_bases(){
+        let mut s = session();
+        s.on_gesture(Gesture::Twist);
+        let mut got = None;
+        for _ in 0..8 {
+            for m in s.tick(0.05) {
+                if let EngineMsg::Digits { left_base, right_base, right, .. } = m {
+                    got = Some((left_base, right_base, right));
+                }
+            }
+        }
+        let (lb, rb, r) = got.expect("digits");
+        assert_eq!((lb, rb), (22, 5), "bases stay with the roles");
+        assert!(r.iter().all(|d| (*d as u32) < 5));
     }
 
     #[test]

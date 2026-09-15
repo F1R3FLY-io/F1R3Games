@@ -11,7 +11,7 @@
 //! hands to pull.
 
 use serde::{Deserialize, Serialize};
-use skein_spigot::{DigitCache, SpigotConfig};
+use skein_spigot::{Constant, DigitCache, SpigotConfig};
 
 use crate::calib::Calibration;
 use crate::envelope::{DurationMap, Envelope, Note, PitchMap};
@@ -99,8 +99,13 @@ pub struct Instrument {
     calib: Calibration,
     mode: Mode,
 
-    left: SpigotConfig,
-    right: SpigotConfig,
+    /// The constant currently in the pitch role, and the one in the duration
+    /// role. A twist exchanges these two and nothing else.
+    pitch_constant: Constant,
+    duration_constant: Constant,
+    /// The pitch role's base — 16, 22 or 37. The duration role is always
+    /// `DURATION_BASE` and never varies.
+    pitch_base: u32,
     p_l: usize,
     p_r: usize,
 
@@ -126,8 +131,9 @@ impl Instrument {
         Instrument {
             calib,
             mode: Mode::Play,
-            left,
-            right,
+            pitch_constant: left.constant,
+            duration_constant: right.constant,
+            pitch_base: left.base,
             p_l: 0,
             p_r: 0,
             mesh: None,
@@ -161,7 +167,12 @@ impl Instrument {
         (self.p_l, self.p_r)
     }
     pub fn configs(&self) -> (SpigotConfig, SpigotConfig) {
-        (self.left, self.right)
+        self.skein().normalise()
+    }
+
+    /// The constant in each role, for display.
+    pub fn role_constants(&self) -> (Constant, Constant) {
+        (self.pitch_constant, self.duration_constant)
     }
     pub fn captures(&self) -> &[Capture] {
         &self.captures
@@ -172,7 +183,7 @@ impl Instrument {
 
     /// The skein as a term. `Weave` with the pitch side first.
     pub fn skein(&self) -> Skein {
-        Skein::weave(self.left, self.right)
+        Skein::weave(self.pitch_constant, self.duration_constant, self.pitch_base)
     }
 
     /// The envelope in force right now. Tempo comes from the mesh, because a
@@ -195,6 +206,11 @@ impl Instrument {
     /// A pitch base should be three octaves of its scale plus a rest
     /// (`base = 3 * degrees + 1`); a mismatch is permitted and folds modulo the
     /// scale, which is legitimate but should be a choice.
+    /// Change the pitch role's base, and optionally which constant sits in
+    /// each role. Only while unzipped: the mesh has committed the pairing.
+    ///
+    /// The duration role's base is never an argument. It is
+    /// [`DURATION_BASE`](crate::term::DURATION_BASE) and does not vary.
     pub fn set_streams(
         &mut self,
         left: Option<SpigotConfig>,
@@ -204,12 +220,25 @@ impl Instrument {
             return Outcome::Rejected(Rejection::AlreadyZipped);
         }
         if let Some(l) = left {
-            self.left = l;
-            self.p_l = 0;
+            // The base travels with the ROLE; only the constant is taken from
+            // the request.
+            if l.constant != self.pitch_constant {
+                self.pitch_constant = l.constant;
+                self.p_l = 0;
+            }
+            if l.base != self.pitch_base {
+                self.pitch_base = l.base;
+                // A base change means the same cursor indexes a different
+                // sequence entirely, so the position is meaningless now.
+                self.p_l = 0;
+            }
         }
         if let Some(r) = right {
-            self.right = r;
-            self.p_r = 0;
+            if r.constant != self.duration_constant {
+                self.duration_constant = r.constant;
+                self.p_r = 0;
+            }
+            // r.base is ignored: the duration role is always DURATION_BASE.
         }
         Outcome::Accepted
     }
@@ -321,7 +350,14 @@ impl Instrument {
         if self.mesh.is_some() {
             return Outcome::Rejected(Rejection::AlreadyZipped);
         }
-        std::mem::swap(&mut self.left, &mut self.right);
+        // Only the constants exchange. The bases belong to the roles, so the
+        // pitch role keeps the scale's base and the duration role stays at
+        // DURATION_BASE — which means a twist also changes what each spigot
+        // emits. Swapping whole configurations, as this once did, put five
+        // pitches and twenty-two durations on the ribbons.
+        std::mem::swap(&mut self.pitch_constant, &mut self.duration_constant);
+        // Cursors travel with the constants: how far a ribbon has been pulled
+        // is a property of that ribbon.
         std::mem::swap(&mut self.p_l, &mut self.p_r);
         Outcome::Accepted
     }
@@ -440,7 +476,7 @@ impl Instrument {
         }
         let n = far - near;
         let term = Tune::snip(
-            Skein::weave(self.left, self.right),
+            self.skein(),
             mesh.i_l + near,
             mesh.i_r + near,
             n,
@@ -480,6 +516,33 @@ impl Instrument {
 
     pub fn material(&mut self, t: &Tune) -> Material {
         realise(t, &mut self.cache)
+    }
+
+    /// Raw digits from one role, for display.
+    ///
+    /// Read directly rather than through a `Snip` term with the configurations
+    /// swapped, which is how the ribbons came to show the same constant twice:
+    /// that hack conflated the pitch/duration roles with the left/right
+    /// ribbons, so each ribbon's digits arrived through machinery with its own
+    /// opinion about which stream was which.
+    pub fn ribbon(&mut self, pitch_role: bool, from: usize, n: usize) -> Vec<u8> {
+        let cfg = if pitch_role {
+            self.skein().pitch_config()
+        } else {
+            self.skein().duration_config()
+        };
+        self.cache.range(cfg, from, n)
+    }
+
+    /// Raw digits of one stream, for display.
+    ///
+    /// A ribbon is one stream. Reading it through a `Snip` term means going via
+    /// machinery that assigns pitch and duration roles, which is a different
+    /// question from which ribbon is which — and getting the right ribbon out
+    /// of it required swapping the configs, a hack that made both ribbons show
+    /// the same stream as soon as the bases differed.
+    pub fn stream_digits(&mut self, cfg: SpigotConfig, from: usize, n: usize) -> Vec<u8> {
+        self.cache.range(cfg, from, n)
     }
 }
 
@@ -643,14 +706,47 @@ mod tests {
     }
 
     #[test]
-    fn twist_exchanges_streams_and_cursors() {
+    fn twist_exchanges_constants_not_bases() {
+        // Roles are positional and hold the bases: left is always pitch at the
+        // scale's base, right is always duration at base 5. A twist moves the
+        // constants between roles, so each spigot changes what it emits.
         let mut i = inst();
         i.apply(Gesture::PullLeft { steps: 9, velocity: 0.5 });
         let (l0, r0) = i.configs();
+        assert_eq!((l0.constant, l0.base), (Constant::Pi, 22));
+        assert_eq!((r0.constant, r0.base), (Constant::E, 5));
+
         i.apply(Gesture::Twist);
         let (l1, r1) = i.configs();
-        assert_eq!((l1, r1), (r0, l0));
+        assert_eq!((l1.constant, l1.base), (Constant::E, 22), "e takes the pitch base");
+        assert_eq!((r1.constant, r1.base), (Constant::Pi, 5), "pi takes base 5");
+        // Cursors travel with the constants: how far a ribbon has been pulled
+        // is a property of that ribbon.
         assert_eq!(i.cursors(), (0, 9));
+    }
+
+    #[test]
+    fn the_pitch_base_follows_the_scale_and_the_duration_base_does_not() {
+        let mut i = inst();
+        for base in [16u32, 22, 37] {
+            let out = i.set_streams(
+                Some(SpigotConfig::new(Constant::Pi, base).unwrap()),
+                None,
+            );
+            assert_eq!(out, Outcome::Accepted);
+            let (l, r) = i.configs();
+            assert_eq!(l.base, base, "pitch role takes the scale base");
+            assert_eq!(r.base, 5, "duration role never varies");
+        }
+    }
+
+    #[test]
+    fn a_base_change_is_refused_while_zipped() {
+        let mut i = zipped();
+        assert_eq!(
+            i.set_streams(Some(SpigotConfig::new(Constant::Pi, 16).unwrap()), None),
+            Outcome::Rejected(Rejection::AlreadyZipped)
+        );
     }
 
     #[test]

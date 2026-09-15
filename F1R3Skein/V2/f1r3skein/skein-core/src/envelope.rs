@@ -111,12 +111,16 @@ pub struct Envelope {
 }
 
 impl Default for Envelope {
-    /// Defaults chosen to be immediately playable: a pentatonic minor on A,
-    /// which is hard to make sound wrong, with musical durations at a walking
-    /// tempo.
+    /// Defaults that PAIR with the default streams.
+    ///
+    /// The pitch stream is base 22, and `base = 3 * degrees + 1` makes that
+    /// three octaves of a 7-degree scale plus a rest — so the map must be
+    /// diatonic. Pairing a base-22 stream with a 5-degree map folds modulo 5
+    /// and spreads the digits over four-plus octaves, which is legitimate but
+    /// should be chosen rather than inherited from a default.
     fn default() -> Self {
         Envelope {
-            pitch_map: PitchMap::PentatonicMinor,
+            pitch_map: PitchMap::Major,
             duration_map: DurationMap::Musical,
             root: 57, // A3
             tempo_bpm: 96,
@@ -174,6 +178,14 @@ mod tests {
 
     fn mat(cells: Vec<Cell>) -> Material {
         Material { pitch_base: 22, dur_base: 5, cells }
+    }
+
+    #[test]
+    fn the_defaults_pair() {
+        // A default that does not pair with the default stream is how the
+        // panel came to claim diatonic while the engine played pentatonic.
+        let e = Envelope::default();
+        assert_eq!(22, 3 * e.pitch_map.cardinality() as u32 + 1);
     }
 
     #[test]

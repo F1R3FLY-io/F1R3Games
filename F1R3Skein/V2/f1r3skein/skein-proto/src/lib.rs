@@ -98,6 +98,11 @@ pub enum EngineMsg {
         right: Vec<u8>,
         left_pos: usize,
         right_pos: usize,
+        /// Each ribbon's own base. The client colours and labels against it;
+        /// assuming a shared base makes a base-5 ribbon and a base-16 ribbon
+        /// indistinguishable.
+        left_base: u32,
+        right_base: u32,
     },
     Note {
         #[serde(default = "v")]
