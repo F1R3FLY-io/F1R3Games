@@ -246,15 +246,22 @@ impl Session {
             Some(m) => (m.i_l + m.n, m.i_r + m.n),
             None => self.instrument.cursors(),
         };
-        let from_l = p_l.saturating_sub(RIBBON_WIDTH);
-        let from_r = p_r.saturating_sub(RIBBON_WIDTH);
+
+        // The window runs FORWARD from the cursor, not backward.
+        //
+        // The spool holds the future: the present section is the ribbon
+        // between M's hands and the spool, which is material that has not been
+        // consumed yet. Showing `[p - width, p)` was doubly wrong — it
+        // displayed what had already passed, and it was empty whenever the
+        // cursor sat at zero, which is exactly where a stream change leaves it.
+        // The ribbons would disappear until something advanced them.
         let left = self
             .instrument
             .material(&Tune::snip(
                 skein_core::term::Skein::weave(l_cfg, r_cfg),
-                from_l,
-                from_r,
-                p_l - from_l,
+                p_l,
+                p_r,
+                RIBBON_WIDTH,
             ))
             .cells
             .iter()
@@ -267,9 +274,9 @@ impl Session {
             .instrument
             .material(&Tune::snip(
                 skein_core::term::Skein::weave(r_cfg, l_cfg),
-                from_r,
-                from_l,
-                p_r - from_r,
+                p_r,
+                p_l,
+                RIBBON_WIDTH,
             ))
             .cells
             .iter()
@@ -364,6 +371,25 @@ mod tests {
         // One second at 60 Hz must not exceed the 30 Hz cap.
         assert!(digits <= 31, "sent {digits} digit messages in a second");
         assert!(digits > 0);
+    }
+
+    #[test]
+    fn the_ribbon_is_populated_from_a_standing_start() {
+        // A stream change resets the cursors to zero. The ribbon shows the
+        // material ahead of the cursor — what is still on the spool — so it
+        // must be full immediately rather than waiting for motion.
+        let mut s = session();
+        let mut found = None;
+        for _ in 0..8 {
+            for m in s.tick(0.05) {
+                if let EngineMsg::Digits { left, right, .. } = m {
+                    found = Some((left.len(), right.len()));
+                }
+            }
+        }
+        let (l, r) = found.expect("digits should be sent at rest");
+        assert_eq!(l, RIBBON_WIDTH, "left ribbon empty at cursor zero");
+        assert_eq!(r, RIBBON_WIDTH, "right ribbon empty at cursor zero");
     }
 
     #[test]

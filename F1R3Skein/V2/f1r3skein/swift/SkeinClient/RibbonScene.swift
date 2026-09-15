@@ -230,12 +230,13 @@ public final class RibbonScene {
         }
         while cached.count < digits.count { cached.append(255) }
 
-        // The near end is M's hand (or a clip); the far end is the spool. The
-        // most recent digit sits in her hand and the oldest runs away toward
-        // the spool, so the ribbon reads outward from her.
+        // The near end is M's hand (or a clip); the far end is the spool.
+        // The spool holds the future, so digit 0 — the next one to be
+        // consumed — sits at her hand and the rest run away toward the spool,
+        // still wound and not yet played.
         let n = digits.count
         for (i, digit) in digits.enumerated() {
-            let t = n > 1 ? Float(n - 1 - i) / Float(n - 1) : 0
+            let t = n > 1 ? Float(i) / Float(n - 1) : 0
             let p = near + (spool - near) * t
             let e = patches[i]
             e.position = p
