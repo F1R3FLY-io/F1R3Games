@@ -117,13 +117,9 @@ public final class SkeinModel {
         audio.position(left: left, right: right)
     }
 
-    /// Height of the playing surface above the floor. Mirrors the scene so
-    /// the control survives the immersive space being closed and reopened.
-    public var deckHeight: Float = 1.30
-
-    public func setDeckHeight(_ y: Float) {
-        deckHeight = y
-        scene?.setDeckHeight(y)
+    /// Put the spools back in front of M, wherever she is now.
+    public func recentre() {
+        scene?.recentre()
     }
 
     public func noteImmersiveFailure(_ text: String) {
@@ -150,6 +146,12 @@ public final class SkeinModel {
         lastHead = frame.head
         channel.send(ClientMessage.frame(frame))
         scene?.updateGhosts(left: frame.left, right: frame.right)
+        // The near end of each ribbon is read, not calculated: a ribbon runs
+        // from M's hand to its spool. Mounted, it runs from the clips instead.
+        scene?.setAnchors(
+            left: frame.left.map { SIMD3($0.wrist.x, $0.wrist.y, $0.wrist.z) },
+            right: frame.right.map { SIMD3($0.wrist.x, $0.wrist.y, $0.wrist.z) },
+            mounted: isMeta)
     }
 
     /// Panel equivalents. Required by the spec so that a head-only or

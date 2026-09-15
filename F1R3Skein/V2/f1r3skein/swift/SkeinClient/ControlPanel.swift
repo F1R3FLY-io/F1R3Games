@@ -348,21 +348,10 @@ struct ControlPanel: View {
                     set: { model.showDebug = $0 }))
                     .toggleStyle(.button)
 
-                // The immersive world origin is at floor level, so the
-                // surface has to be lifted to where M is. Standing is about
-                // 1.3 m, seated about 1.0 m.
+                // No height control: the surface follows M's hands. Only the
+                // spools are placed, and this puts them back in front of her.
                 if immersive {
-                    HStack(spacing: 6) {
-                        Text("height").font(.caption2).foregroundStyle(.secondary)
-                        Slider(
-                            value: Binding(
-                                get: { Double(model.deckHeight) },
-                                set: { model.setDeckHeight(Float($0)) }),
-                            in: 0.6...2.0)
-                            .frame(width: 120)
-                        Text(String(format: "%.2f m", model.deckHeight))
-                            .font(.caption2).monospacedDigit()
-                    }
+                    Button("Recentre") { model.recentre() }
                 }
 
                 if case .failed = model.connection {

@@ -22,7 +22,6 @@ struct ImmersiveView: View {
             // positions and must not inherit the surface's height offset.
             content.add(scene.ghostRoot)
             model.scene = scene
-            scene.setDeckHeight(model.deckHeight)
             // Each ribbon sounds from its own position, so the two streams are
             // audibly distinct as well as visually distinct.
             let (l, r) = scene.frontWorldPositions

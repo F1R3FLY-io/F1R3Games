@@ -25,38 +25,60 @@ import UIKit
 @MainActor
 public final class RibbonScene {
 
-    // Geometry, in M's axes: x right, y up, z away from her.
+    // Geometry.
     //
-    // RealityKit's forward is NEGATIVE z, so every z here is negated when a
-    // position is written. Laying the surface out at positive z put the whole
-    // thing BEHIND M's head — which looks exactly like nothing rendering, and
-    // cost two rounds of debugging because the hand ghosts use raw ARKit
-    // positions and never pass through this layout.
+    // The near end of each ribbon is NOT calculated: it is read from hand
+    // tracking. A ribbon runs from M's hand out to its spool, so the end she
+    // holds is wherever her hand is — and when the ribbons are mounted, from
+    // the clips instead. Only the far end needs choosing.
     //
-    // IMPORTANT: in a visionOS ImmersiveSpace the world origin is at FLOOR
-    // level, not at the head. Laying the ribbons out around y = 0 puts them at
-    // M's feet, which looks exactly like them not rendering at all. The whole
-    // scene is therefore lifted to `deckHeight`.
-    private let ribbonX: Float = 0.32       // ribbons separate on x, not y
-    private let nearZ: Float = 0.45
-    private let farZ: Float = 1.60
-    /// Height of the playing surface above the floor. Roughly chest height for
-    /// a standing player; `setDeckHeight` adjusts it for a seated one.
-    private var deckHeight: Float = 1.30
-    private let patchDepth: Float = 0.035
+    // This removes the height calibration entirely. The surface follows M
+    // rather than sitting at a guessed deck height, which is both more correct
+    // and one fewer thing to get wrong.
+    //
+    // Positions are in world space. Samples arrive in the spec's axes (x
+    // right, y up, z away from M); RealityKit's forward is -z, so a z is
+    // negated whenever one is written.
+
+    /// How far the spools sit beyond the hands, metres.
+    private let spoolDistance: Float = 1.40
+    /// Half the separation between the two spools on x.
+    private let spoolSpread: Float = 0.34
+    /// How far above the hands the spools ride.
+    private let spoolRise: Float = 0.18
+    /// Patches drawn per ribbon.
+    private let patchCountMax = 60
     private let patchSize = SIMD3<Float>(0.05, 0.035, 0.010)
 
-    /// The playing surface, lifted to `deckHeight`.
+    /// Where M's hands are, in world space. The near anchors.
+    private var leftAnchor: SIMD3<Float>?
+    private var rightAnchor: SIMD3<Float>?
+    /// The clips, used as near anchors once mounted.
+    private var mountLeft: SIMD3<Float>?
+    private var mountRight: SIMD3<Float>?
+    private var mounted = false
+
+    /// Spool positions, captured once so they do not jitter with the hands,
+    /// and recapturable on demand.
+    private var spoolLeft: SIMD3<Float>?
+    private var spoolRight: SIMD3<Float>?
+
+    // MARK: - Entities
+
+    /// The playing surface, in world space. No transform is applied to it: the
+    /// geometry is absolute, because the near end is a tracked hand.
     public let root = Entity()
-    /// Hand ghosts live OUTSIDE the lifted root: they carry absolute ARKit
-    /// world positions, so any transform on the surface displaces them from
-    /// M's actual hands. Added to the scene separately.
+    /// Hand ghosts live outside `root` for the same reason they always did —
+    /// they carry absolute ARKit positions and must inherit no transform.
     public let ghostRoot = Entity()
+
     private let leftRibbon = Entity()
     private let rightRibbon = Entity()
     private let meshLine = Entity()
     private let frontMarker = Entity()
     private let captureHighlight = Entity()
+    private let spoolMarkers = Entity()
+    private let mountMarkers = Entity()
     private let ghosts = HandGhosts()
 
     private var leftPatches: [ModelEntity] = []
@@ -64,7 +86,7 @@ public final class RibbonScene {
     private var leftDigits: [UInt8] = []
     private var rightDigits: [UInt8] = []
 
-    // Caches. Built once, indexed by value — never regenerated per frame.
+    // Caches, indexed by value. Never regenerated per frame.
     private var textMeshes: [UInt8: MeshResource] = [:]
     private var materials: [Int: PhysicallyBasedMaterial] = [:]
     private var boxMesh: MeshResource?
@@ -75,21 +97,60 @@ public final class RibbonScene {
         root.addChild(meshLine)
         root.addChild(frontMarker)
         root.addChild(captureHighlight)
+        root.addChild(spoolMarkers)
+        root.addChild(mountMarkers)
         ghostRoot.addChild(ghosts.root)
         boxMesh = .generateBox(size: patchSize, cornerRadius: 0.002)
         buildFrontMarker()
-        buildOriginMarker()
-        root.position = [0, deckHeight, 0]
+        buildSpoolMarkers()
     }
 
-    /// Raise or lower the whole playing surface. Seated players want roughly
-    /// 1.0 m; standing, roughly 1.3 m.
-    public func setDeckHeight(_ y: Float) {
-        deckHeight = max(0.3, min(2.2, y))
-        root.position = [0, deckHeight, 0]
+    /// Near anchors, straight from hand tracking. Called every frame.
+    ///
+    /// `mounted` switches the near end from the hands to the clips: that is the
+    /// whole of the play/meta distinction as far as the geometry is concerned.
+    public func setAnchors(
+        left: SIMD3<Float>?, right: SIMD3<Float>?, mounted: Bool
+    ) {
+        if let l = left { leftAnchor = l }
+        if let r = right { rightAnchor = r }
+        self.mounted = mounted
+        captureSpoolsIfNeeded()
+        placeMountMarkers()
     }
 
-    public var currentDeckHeight: Float { deckHeight }
+    /// Fix the spools the first time both hands are seen. They are the far end
+    /// and must stay put; only the near end follows M.
+    private func captureSpoolsIfNeeded() {
+        guard spoolLeft == nil || spoolRight == nil,
+              let l = leftAnchor, let r = rightAnchor else { return }
+        let mid = (l + r) / 2
+        spoolLeft = SIMD3(mid.x - spoolSpread, mid.y + spoolRise, mid.z - spoolDistance)
+        spoolRight = SIMD3(mid.x + spoolSpread, mid.y + spoolRise, mid.z - spoolDistance)
+        placeSpoolMarkers()
+    }
+
+    /// Put the spools back in front of M, wherever she is now.
+    public func recentre() {
+        spoolLeft = nil
+        spoolRight = nil
+        captureSpoolsIfNeeded()
+    }
+
+    /// The clips sit between the ribbons, just in front of the hands.
+    private func placeMountMarkers() {
+        guard let l = leftAnchor, let r = rightAnchor else { return }
+        let mid = (l + r) / 2
+        let toward = SIMD3<Float>(0, 0, -0.18)
+        mountLeft = SIMD3(mid.x - 0.05, mid.y, mid.z) + toward
+        mountRight = SIMD3(mid.x + 0.05, mid.y, mid.z) + toward
+        if mountMarkers.children.isEmpty { buildMountMarkers() }
+        if let a = mountLeft, let b = mountRight, mountMarkers.children.count >= 2 {
+            mountMarkers.children[0].position = a
+            mountMarkers.children[1].position = b
+        }
+        mountMarkers.isEnabled = true
+    }
 
     // MARK: - Caches
 
@@ -136,8 +197,12 @@ public final class RibbonScene {
     public func update(left: [UInt8], right: [UInt8], base: UInt8) {
         lastLeftCount = left.count
         lastRightCount = right.count
-        sync(&leftPatches, &leftDigits, left, into: leftRibbon, x: -ribbonX, base: base)
-        sync(&rightPatches, &rightDigits, right, into: rightRibbon, x: ribbonX, base: base)
+        let nearL = mounted ? mountLeft : leftAnchor
+        let nearR = mounted ? mountRight : rightAnchor
+        sync(&leftPatches, &leftDigits, left, into: leftRibbon,
+             near: nearL, spool: spoolLeft, base: base)
+        sync(&rightPatches, &rightDigits, right, into: rightRibbon,
+             near: nearR, spool: spoolRight, base: base)
     }
 
     private func sync(
@@ -145,9 +210,15 @@ public final class RibbonScene {
         _ cached: inout [UInt8],
         _ digits: [UInt8],
         into parent: Entity,
-        x: Float,
+        near: SIMD3<Float>?,
+        spool: SIMD3<Float>?,
         base: UInt8
     ) {
+        guard let near, let spool, !digits.isEmpty else {
+            patches.forEach { $0.isEnabled = false }
+            return
+        }
+
         while patches.count < digits.count {
             let e = ModelEntity(mesh: boxMesh!, materials: [SimpleMaterial()])
             let label = ModelEntity(mesh: textMesh(0), materials: [UnlitMaterial(color: .white)])
@@ -157,22 +228,26 @@ public final class RibbonScene {
             parent.addChild(e)
             patches.append(e)
         }
-        cached.reserveCapacity(digits.count)
         while cached.count < digits.count { cached.append(255) }
 
+        // The near end is M's hand (or a clip); the far end is the spool. The
+        // most recent digit sits in her hand and the oldest runs away toward
+        // the spool, so the ribbon reads outward from her.
+        let n = digits.count
         for (i, digit) in digits.enumerated() {
-            let p = patches[i]
-            let z = nearZ + Float(i) * patchDepth
-            let fade = Float(i) / Float(max(digits.count, 1))
-            p.position = [x, 0, -z]          // RealityKit forward is -z
-            let scale = 1.0 - fade * 0.5
-            p.scale = [scale, scale, scale]
-            p.isEnabled = true
-            // Only touch meshes and materials when the value actually changed.
+            let t = n > 1 ? Float(n - 1 - i) / Float(n - 1) : 0
+            let p = near + (spool - near) * t
+            let e = patches[i]
+            e.position = p
+            let scale = 1.0 - t * 0.45
+            e.scale = [scale, scale, scale]
+            e.isEnabled = true
+            // Face M, wherever the ribbon happens to run.
+            e.look(at: near + (near - spool), from: p, relativeTo: nil)
             if cached[i] != digit {
                 cached[i] = digit
-                p.model?.materials = [material(digit: digit, base: base, fade: fade)]
-                if let label = p.children.first(where: { $0.name == "label" })
+                e.model?.materials = [material(digit: digit, base: base, fade: t)]
+                if let label = e.children.first(where: { $0.name == "label" })
                     as? ModelEntity {
                     label.model?.mesh = textMesh(digit)
                 }
@@ -184,88 +259,138 @@ public final class RibbonScene {
     // MARK: - Mesh, front, capture
 
     /// The notches meshing. Rendered at the notch scale, between the ribbons.
+    /// The notches meshing: one thread per committed notch pair, drawn between
+    /// the two ribbons wherever they happen to run.
     public func updateMesh(front: Int, visible: Int) {
         meshLine.children.forEach { $0.removeFromParent() }
-        guard visible > 0 else { return }
-        let thread = MeshResource.generateBox(
-            size: [2 * ribbonX - 0.05, 0.002, 0.002])
+        guard visible > 0,
+              let nl = mounted ? mountLeft : leftAnchor,
+              let nr = mounted ? mountRight : rightAnchor,
+              let sl = spoolLeft, let sr = spoolRight else { return }
         let mat = UnlitMaterial(color: .init(white: 0.85, alpha: 0.9))
-        for i in 0..<visible {
-            let e = ModelEntity(mesh: thread, materials: [mat])
-            e.position = [0, 0, -(nearZ + Float(i) * patchDepth)]
+        let count = min(visible, patchCountMax)
+        for i in 0..<count {
+            let t = count > 1 ? Float(i) / Float(count - 1) : 0
+            let a = nl + (sl - nl) * t
+            let b = nr + (sr - nr) * t
+            let mid = (a + b) / 2
+            let span = simd_length(b - a)
+            let e = ModelEntity(
+                mesh: .generateBox(size: [max(span - 0.05, 0.01), 0.002, 0.002]),
+                materials: [mat])
+            e.position = mid
+            e.look(at: b, from: mid, relativeTo: nil)
             meshLine.addChild(e)
         }
     }
 
-    /// Always visible, whatever the ribbons do. If this is in view and the
-    /// ribbons are not, the surface is placed correctly and the fault is in the
-    /// ribbon build; if this is missing too, the surface is elsewhere.
-    private func buildOriginMarker() {
-        let m = MeshResource.generateSphere(radius: 0.03)
-        let e = ModelEntity(mesh: m, materials: [UnlitMaterial(color: .systemPink)])
-        e.position = [0, 0, -nearZ]
-        root.addChild(e)
+    /// Spools: the far end of each ribbon, and the only part of the layout
+    /// that is chosen rather than tracked.
+    private func buildSpoolMarkers() {
+        for colour in [UIColor.systemPurple, UIColor.systemTeal] {
+            let e = ModelEntity(
+                mesh: .generateCylinder(height: 0.14, radius: 0.075),
+                materials: [UnlitMaterial(color: colour.withAlphaComponent(0.85))])
+            e.orientation = simd_quatf(angle: .pi / 2, axis: [0, 0, 1])
+            spoolMarkers.addChild(e)
+        }
+        spoolMarkers.isEnabled = false
+    }
 
-        for (x, colour) in [(-ribbonX, UIColor.systemPurple), (ribbonX, UIColor.systemTeal)] {
-            let rail = ModelEntity(
-                mesh: .generateBox(size: [0.01, 0.01, farZ - nearZ]),
-                materials: [UnlitMaterial(color: colour)])
-            rail.position = [x, -0.03, -(nearZ + farZ) / 2]
-            root.addChild(rail)
+    private func placeSpoolMarkers() {
+        guard let l = spoolLeft, let r = spoolRight,
+              spoolMarkers.children.count >= 2 else { return }
+        spoolMarkers.children[0].position = l
+        spoolMarkers.children[1].position = r
+        spoolMarkers.isEnabled = true
+    }
+
+    /// The two clips, drawn always so M can see where to mount.
+    private func buildMountMarkers() {
+        for _ in 0..<2 {
+            let e = ModelEntity(
+                mesh: .generateBox(size: [0.02, 0.05, 0.02], cornerRadius: 0.004),
+                materials: [UnlitMaterial(color: .systemOrange)])
+            mountMarkers.addChild(e)
         }
     }
 
     private func buildFrontMarker() {
-        let m = MeshResource.generateBox(size: [2 * ribbonX, 0.05, 0.006], cornerRadius: 0.002)
+        let m = MeshResource.generateBox(size: [0.72, 0.05, 0.006], cornerRadius: 0.002)
         let e = ModelEntity(mesh: m, materials: [UnlitMaterial(color: .systemOrange)])
         e.name = "front"
         frontMarker.addChild(e)
-        // The front is the playhead M watches. It no longer needs to be
-        // targetable — halt is a head gesture, so nothing aims at it.
-        frontMarker.components.set(OpacityComponent(opacity: 0.9))
+        frontMarker.isEnabled = false
     }
 
+    /// The zip front rides between the two ribbons at the notch it has reached.
     public func placeFront(at notch: Int, running: Bool, warning: Bool) {
-        frontMarker.position = [0, 0, -(nearZ + Float(notch) * patchDepth)]
+        guard let nl = mounted ? mountLeft : leftAnchor,
+              let nr = mounted ? mountRight : rightAnchor,
+              let sl = spoolLeft, let sr = spoolRight else {
+            frontMarker.isEnabled = false
+            return
+        }
+        let near = (nl + nr) / 2
+        let spool = (sl + sr) / 2
+        let t = min(Float(notch) / Float(patchCountMax), 1)
+        frontMarker.position = near + (spool - near) * t
+        frontMarker.look(at: near + (near - spool), from: frontMarker.position,
+                         relativeTo: nil)
+        frontMarker.isEnabled = true
         // A head tilt is proprioceptively silent, so freezing must be
         // unmistakable or M will not trust it.
-        let opacity: Float = running ? 0.9 : 0.35
+        let opacity: Float = running ? 0.95 : 0.3
         frontMarker.components.set(OpacityComponent(opacity: warning ? 1.0 : opacity))
     }
 
     /// A capture lifting clear of an intact band. Showing a gap or a severed
     /// end would misrepresent the mechanism: the cut is virtual.
-    public func showCapture(near: Int, far: Int) {
+    public func showCapture(near nearNotch: Int, far farNotch: Int) {
         captureHighlight.children.forEach { $0.removeFromParent() }
-        guard far > near else { return }
-        let length = Float(far - near) * patchDepth
-        let m = MeshResource.generateBox(
-            size: [2 * ribbonX, 0.06, length], cornerRadius: 0.004)
+        guard farNotch > nearNotch,
+              let nl = mounted ? mountLeft : leftAnchor,
+              let nr = mounted ? mountRight : rightAnchor,
+              let sl = spoolLeft, let sr = spoolRight else { return }
+        let near = (nl + nr) / 2
+        let spool = (sl + sr) / 2
+        let t0 = min(Float(nearNotch) / Float(patchCountMax), 1)
+        let t1 = min(Float(farNotch) / Float(patchCountMax), 1)
+        let a = near + (spool - near) * t0
+        let b = near + (spool - near) * t1
+        let mid = (a + b) / 2
+        let length = simd_length(b - a)
         let e = ModelEntity(
-            mesh: m, materials: [UnlitMaterial(color: .systemOrange.withAlphaComponent(0.35))])
-        e.position = [0, 0, -(nearZ + Float(near) * patchDepth + length / 2)]
+            mesh: .generateBox(size: [0.72, 0.06, max(length, 0.02)], cornerRadius: 0.004),
+            materials: [UnlitMaterial(color: .systemOrange.withAlphaComponent(0.35))])
+        e.position = mid
+        e.look(at: near + (near - spool), from: mid, relativeTo: nil)
         captureHighlight.addChild(e)
-        // Lift the copy clear; the band stays where it is.
-        var t = e.transform
-        t.translation.y += 0.22
-        e.move(to: t, relativeTo: captureHighlight, duration: 0.45)
+        var tr = e.transform
+        tr.translation.y += 0.22
+        e.move(to: tr, relativeTo: captureHighlight, duration: 0.45)
     }
 
-    /// Far-field compression, so a long play visibly costs z-axis real estate.
+    /// Far-field compression, so a long play visibly costs depth. The spools
+    /// draw toward M rather than the surface being scaled, which would drag the
+    /// near end away from her hands.
     public func compress(budgetUsed: Float) {
-        let squeeze = 1.0 - min(max(budgetUsed, 0), 1.0) * 0.55
-        // Depth only. Scaling x or y would move the surface away from the
-        // height set above.
-        root.scale = [1, 1, squeeze]
-        root.position = [0, deckHeight, 0]
+        guard let nl = leftAnchor, let nr = rightAnchor else { return }
+        let pull = min(max(budgetUsed, 0), 1) * 0.45
+        let mid = (nl + nr) / 2
+        let d = spoolDistance * (1 - pull)
+        spoolLeft = SIMD3(mid.x - spoolSpread, mid.y + spoolRise, mid.z - d)
+        spoolRight = SIMD3(mid.x + spoolSpread, mid.y + spoolRise, mid.z - d)
+        placeSpoolMarkers()
     }
 
     public func updateGhosts(left: SkeinHand?, right: SkeinHand?) {
         ghosts.update(left: left, right: right)
     }
 
+    /// Where each ribbon's voice should sound from, for spatialised audio.
     public var frontWorldPositions: (SIMD3<Float>, SIMD3<Float>) {
-        ([-ribbonX, deckHeight, -nearZ], [ribbonX, deckHeight, -nearZ])
+        (leftAnchor ?? [-0.2, 1.2, -0.4], rightAnchor ?? [0.2, 1.2, -0.4])
     }
 }
 
