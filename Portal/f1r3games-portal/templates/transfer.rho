@@ -1,0 +1,15 @@
+new deployId(`rho:system:deployId`),
+    deployerId(`rho:system:deployerId`),
+    rl(`rho:registry:lookup`),
+    systemVaultCh, vaultCh, targetCh, keyCh
+in {
+  rl!(`rho:vault:system`, *systemVaultCh) |
+  for (@(_, SystemVault) <- systemVaultCh) {
+    @SystemVault!("findOrCreate", {{from}}, *vaultCh) |
+    @SystemVault!("findOrCreate", {{to}}, *targetCh) |
+    @SystemVault!("deployerAuthKey", *deployerId, *keyCh) |
+    for (@(true, vault) <- vaultCh & key <- keyCh & @(true, _) <- targetCh) {
+      @vault!("transfer", {{to}}, {{amount}}, *key, *deployId)
+    }
+  }
+}
