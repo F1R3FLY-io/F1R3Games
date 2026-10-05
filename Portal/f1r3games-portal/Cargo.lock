@@ -475,6 +475,7 @@ dependencies = [
  "anyhow",
  "clap",
  "f1r3games-core",
+ "f1r3games-games",
  "f1r3games-wallet",
  "hex",
  "reqwest",
@@ -500,6 +501,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "f1r3games-games"
+version = "0.1.0"
+dependencies = [
+ "f1r3games-core",
+ "f1r3games-wallet",
+ "hex",
+ "k256",
+ "serde_json",
+]
+
+[[package]]
 name = "f1r3games-node"
 version = "0.1.0"
 dependencies = [
@@ -516,6 +528,7 @@ name = "f1r3games-rholint"
 version = "0.1.0"
 dependencies = [
  "f1r3games-core",
+ "f1r3games-games",
  "hex",
  "rholang-parser",
  "validated",
@@ -529,6 +542,7 @@ dependencies = [
  "axum",
  "clap",
  "f1r3games-core",
+ "f1r3games-games",
  "f1r3games-node",
  "f1r3games-wallet",
  "hex",

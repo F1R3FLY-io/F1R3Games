@@ -1,0 +1,15 @@
+[package]
+name = "f1r3games-games"
+description = "The five F1R3Games games as portal registrations: each game's own environment (live per-instance state), its call templates, and its manifest for games.register"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+f1r3games-core.workspace = true
+k256.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+f1r3games-wallet.workspace = true

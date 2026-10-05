@@ -1,0 +1,117 @@
+// The /*@GAME@*/ environment: a game's own live state, per instance.
+//
+// Installed by the F1R3Games service under the game's registry key with
+// rho:registry:insertSigned:secp256k1, versioned like the portal's `games`
+// environment. Callers are identified from rho:deploy:data; membership of an
+// instance is checked against the portal's `games` environment, so only the
+// instance's participants (and, where a method says so, anyone) can act.
+// This environment never touches a vault: it reads the caller's identity and
+// nothing else. Every method answers (true, value) or (false, reason).
+new rl(`rho:registry:lookup`),
+    rs(`rho:registry:insertSigned:secp256k1`),
+    abort(`rho:execution:abort`),
+    stdout(`rho:io:stdout`),
+    prevEnvCh, initEnv, uriCh, env
+in {
+  rl!({{env_uri}}, *prevEnvCh) |
+  for (@prev <- prevEnvCh) {
+    match prev {
+      (version, _) => {
+        if (version < {{version}}) { initEnv!() }
+        else { stdout!(("/*@GAME@*/ env already at version", version)) }
+      }
+      _ => { initEnv!() }
+    }
+  } |
+
+  for (<- initEnv) {
+    new deployData(`rho:deploy:data`),
+        vaultAddress(`rho:vault:address`),
+        treeHashMapCh, who, instanceOf, member, participants, keysFor, fetchAll
+    in {
+      rl!(`rho:lang:treeHashMap`, *treeHashMapCh) |
+      for (TreeHashMap <- treeHashMapCh) {
+        new mCh in {
+          TreeHashMap!("init", 3, *mCh) |
+          for (@state <- mCh) {
+
+            // (caller address, deploy timestamp)
+            contract who(ret) = {
+              new ddCh, aCh in {
+                deployData!(*ddCh) |
+                for (@ts, @did, _ <- ddCh) {
+                  vaultAddress!("fromDeployerId", did, *aCh) |
+                  for (@address <- aCh) { ret!(address, ts) }
+                }
+              }
+            } |
+
+            // The portal's record of an instance, or Nil.
+            contract instanceOf(@instance, ret) = {
+              new pCh, iCh in {
+                rl!({{portal_env}}, *pCh) |
+                for (@(_, penv) <- pCh) {
+                  @penv!("instances", "get", instance, *iCh) |
+                  for (@r <- iCh) {
+                    match r {
+                      (true, inst) => { ret!(inst) }
+                      _ => { ret!(Nil) }
+                    }
+                  }
+                }
+              }
+            } |
+
+            contract member(@instance, @address, ret) = {
+              new iCh in {
+                instanceOf!(instance, *iCh) |
+                for (@inst <- iCh) {
+                  if (inst == Nil) { ret!(false) }
+                  else { ret!(inst.get("participants").contains(address) and inst.get("status") != "closed") }
+                }
+              }
+            } |
+
+            contract participants(@instance, ret) = {
+              new iCh in {
+                instanceOf!(instance, *iCh) |
+                for (@inst <- iCh) {
+                  if (inst == Nil) { ret!([]) }
+                  else { ret!(inst.get("participants").keys().toList()) }
+                }
+              }
+            } |
+
+            // [(instance, 0), ..., (instance, n - 1)]
+            contract keysFor(@instance, @i, @n, @acc, ret) = {
+              if (i >= n) { ret!(acc) }
+              else { keysFor!(instance, i + 1, n, acc ++ [(instance, i)], *ret) }
+            } |
+
+            contract fetchAll(@keys, @acc, ret) = {
+              match keys {
+                [] => { ret!(acc) }
+                [k ...rest] => {
+                  new vCh in {
+                    TreeHashMap!("get", state, k, *vCh) |
+                    for (@v <- vCh) { fetchAll!(rest, acc ++ [v], *ret) }
+                  }
+                }
+              }
+            } |
+
+/*@BODY@*/
+          }
+        }
+      }
+    } |
+
+    rs!({{public_key}}, ({{version}}, bundle+{*env}), {{sig}}, *uriCh) |
+    for (@uri <- uriCh) {
+      match uri {
+        Nil => { abort!("failed to insert the /*@GAME@*/ environment") }
+        _ => { stdout!(("/*@GAME@*/ environment registered", uri)) }
+      }
+    }
+  }
+}

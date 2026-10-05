@@ -6,6 +6,7 @@ members = [
     "crates/node",
     "crates/service",
     "crates/cli",
+    "crates/games",
     "crates/rholint",
 ]
 # rholint links the node's own Rholang parser, which needs RUSTC_BOOTSTRAP=1 on
@@ -16,6 +17,7 @@ default-members = [
     "crates/node",
     "crates/service",
     "crates/cli",
+    "crates/games",
 ]
 
 [workspace.package]
@@ -30,6 +32,7 @@ rust-version = "1.85"
 f1r3games-core = { path = "crates/core" }
 f1r3games-wallet = { path = "crates/wallet" }
 f1r3games-node = { path = "crates/node" }
+f1r3games-games = { path = "crates/games" }
 anyhow = "1"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }

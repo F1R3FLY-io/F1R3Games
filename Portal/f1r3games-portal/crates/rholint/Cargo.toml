@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 f1r3games-core.workspace = true
+f1r3games-games.workspace = true
 rholang-parser = { git = "https://github.com/F1R3FLY-io/rholang-rs", rev = "527af8afb37f6cad470516fe316076f120b9c353" }
 validated = "1"
 hex.workspace = true

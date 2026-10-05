@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 f1r3games-core.workspace = true
+f1r3games-games.workspace = true
 f1r3games-node.workspace = true
 k256.workspace = true
 axum.workspace = true

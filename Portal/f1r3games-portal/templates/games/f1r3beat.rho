@@ -1,0 +1,57 @@
+            // F1R3Beat: an 8-voice × 16-step pattern per instance, and its tempo.
+            // Voices are stored under (instance, voice); the tempo under
+            // (instance, "tempo"). Patterns are published to the gallery by the
+            // game, with their parents in the header for lineage.
+
+            contract env(@"toggle", @instance, @voice, @step, @on, ret) = {
+              new whoCh, mCh, rCh, ack in {
+                who!(*whoCh) |
+                for (@by, _ <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  for (@isIn <- mCh) {
+                    if (not isIn) { ret!((false, "join the instance first")) }
+                    else { if (voice < 0 or voice >= 8 or step < 0 or step >= 16) { ret!((false, "off the pattern")) }
+                    else {
+                      TreeHashMap!("get", state, (instance, voice), *rCh) |
+                      for (@row <- rCh) {
+                        match row {
+                          Nil => { TreeHashMap!("set", state, (instance, voice), {step: on}, *ack) }
+                          _ => { TreeHashMap!("set", state, (instance, voice), row.set(step, on), *ack) }
+                        } |
+                        for (_ <- ack) { ret!((true, [voice, step, on])) }
+                      }
+                    } }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"tempo", @instance, @bpm, ret) = {
+              new whoCh, mCh, ack in {
+                who!(*whoCh) |
+                for (@by, _ <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  for (@isIn <- mCh) {
+                    if (not isIn) { ret!((false, "join the instance first")) }
+                    else { if (bpm < 40 or bpm > 240) { ret!((false, "tempo must be 40 to 240 bpm")) }
+                    else {
+                      TreeHashMap!("set", state, (instance, "tempo"), bpm, *ack) |
+                      for (_ <- ack) { ret!((true, bpm)) }
+                    } }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"state", @instance, ret) = {
+              new kCh, fCh, tCh in {
+                keysFor!(instance, 0, 8, [], *kCh) |
+                TreeHashMap!("get", state, (instance, "tempo"), *tCh) |
+                for (@keys <- kCh & @tempo <- tCh) {
+                  fetchAll!(keys, [], *fCh) |
+                  for (@voices <- fCh) {
+                    ret!((true, {"voices": voices, "steps": 16, "tempo": tempo}))
+                  }
+                }
+              }
+            }

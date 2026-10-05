@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 f1r3games-core.workspace = true
+f1r3games-games.workspace = true
 f1r3games-wallet.workspace = true
 tokio.workspace = true
 reqwest.workspace = true

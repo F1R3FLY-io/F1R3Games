@@ -78,6 +78,17 @@ enum Cmd {
         derive: Vec<String>,
         #[arg(long)]
         phlo_limit: Option<i64>,
+        /// A registered game whose manifest supplies the template.
+        #[arg(long)]
+        game: Option<String>,
+    },
+    /// Register games from a manifests file (f1r3games-service games-manifests);
+    /// the active key must be the F1R3FLY.io Cooperative's.
+    RegisterGames {
+        file: PathBuf,
+        /// Only these game ids.
+        #[arg(long, value_delimiter = ',')]
+        only: Vec<String>,
     },
     /// Run any explore template: `read games.list`.
     Read {
@@ -230,11 +241,32 @@ fn parse_args(s: &str) -> Result<BTreeMap<String, Value>> {
 impl Ctx {
     /// prepare → review → (prompt) → sign → send. Returns (deployId, derived ids).
     async fn call(&mut self, template: &str, args: BTreeMap<String, Value>, derive: &[String], phlo_limit: Option<i64>) -> Result<(String, Json)> {
+        self.call_in(template, None, args, derive, phlo_limit).await
+    }
+
+    async fn call_in(&mut self, template: &str, game: Option<&str>, args: BTreeMap<String, Value>, derive: &[String], phlo_limit: Option<i64>) -> Result<(String, Json)> {
+        if let Some(g) = game {
+            // Register the game's templates with the wallet from the on-chain manifest.
+            let r = self.read("games.get", [("game".to_string(), Value::str(g))].into_iter().collect()).await?;
+            let m = Value::from_typed_json(&r["value"])?;
+            if let Some(Value::List(ts)) = m.get("templates") {
+                for t in ts {
+                    if t.get("kind").and_then(Value::as_str) == Some("deploy") {
+                        let tpl = f1r3games_core::Template::new(
+                            t.get("id").and_then(Value::as_str).unwrap_or_default(),
+                            f1r3games_core::TemplateKind::Deploy,
+                            t.get("source").and_then(Value::as_str).unwrap_or_default(),
+                        );
+                        self.wallet.policy.register_game_template(g, tpl, t.get("hash").and_then(Value::as_str).unwrap_or_default())?;
+                    }
+                }
+            }
+        }
         let deployer = self.wallet.active_public_key_hex()?;
         let args_json: Json = Json::Object(args.iter().map(|(k, v)| (k.clone(), v.to_typed_json())).collect());
         let p = self
             .client
-            .post("/api/prepare", json!({ "template": template, "args": args_json, "deployer": deployer, "derive": derive, "phloLimit": phlo_limit }))
+            .post("/api/prepare", json!({ "template": template, "game": game, "args": args_json, "deployer": deployer, "derive": derive, "phloLimit": phlo_limit }))
             .await?;
         // The wallet checks the service's answer against its own rendering.
         let returned = p["args"].as_object().ok_or_else(|| anyhow!("prepare: no args"))?;
@@ -467,10 +499,28 @@ async fn main() -> Result<()> {
             }
             store_contacts(&ctx.wallet, &book)?;
         }
-        Cmd::Call { template, args, derive, phlo_limit } => {
+        Cmd::Call { template, args, derive, phlo_limit, game } => {
             let mut ctx = open(&cli).await?;
-            let (id, derived) = ctx.call(template, parse_args(args)?, derive, *phlo_limit).await?;
+            let (id, derived) = ctx.call_in(template, game.as_deref(), parse_args(args)?, derive, *phlo_limit).await?;
             println!("{}", json!({ "deployId": id, "derived": derived }));
+        }
+        Cmd::RegisterGames { file, only } => {
+            let mut ctx = open(&cli).await?;
+            let env = ctx.client.get("/api/env").await?;
+            let me = ctx.wallet.active_address()?;
+            if env["coopAddress"].as_str() != Some(me.as_str()) {
+                bail!("the active key {me} is not the Cooperative's ({}); games.register would refuse it", env["coopAddress"]);
+            }
+            let list: Vec<Json> = serde_json::from_str(&std::fs::read_to_string(file)?)?;
+            for entry in list {
+                let id = entry["id"].as_str().unwrap_or_default().to_string();
+                if !only.is_empty() && !only.contains(&id) {
+                    continue;
+                }
+                let manifest = Value::from_typed_json(&entry["manifest"])?;
+                let (d, _) = ctx.call("games.register", [("manifest".to_string(), manifest)].into_iter().collect(), &[], Some(5_000_000)).await?;
+                println!("{id}: deploy {d}");
+            }
         }
         Cmd::Read { template, args } => {
             let ctx = open(&cli).await?;

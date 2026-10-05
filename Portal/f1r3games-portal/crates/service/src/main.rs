@@ -28,6 +28,33 @@ enum Cmd {
         #[arg(long, default_value = ".")]
         dir: String,
     },
+    /// Write an environment key for each game that has none in DIR.
+    GamesKeygen {
+        #[arg(long, default_value = "game-keys")]
+        dir: String,
+    },
+    /// Install or upgrade each game's environment (keys from DIR).
+    GamesInstall {
+        #[arg(long, default_value = "game-keys")]
+        keys: String,
+        #[arg(long, default_value_t = 1)]
+        version: i64,
+    },
+    /// Write the games' manifests (typed, ready for games.register) to OUT.
+    GamesManifests {
+        #[arg(long, default_value = "game-keys")]
+        keys: String,
+        /// Where the game clients are served: <base>/<id>/ and <base>/<id>/preview/<kind>.html
+        #[arg(long)]
+        entry_base: String,
+        #[arg(long, default_value = "manifests.json")]
+        out: String,
+    },
+}
+
+fn game_key(dir: &str, id: &str) -> anyhow::Result<k256::ecdsa::SigningKey> {
+    let path = std::path::Path::new(dir).join(f1r3games_games::key_file_name(id));
+    keyfile::deserialize(&read(path.to_str().unwrap())?).map_err(|e| anyhow::anyhow!("{}: {e}", path.display()))
 }
 
 fn read(path: &str) -> anyhow::Result<String> {
@@ -60,6 +87,29 @@ async fn main() -> anyhow::Result<()> {
         println!("wrote service-key.json, env-key.json, token-secret.hex in {}", dir.display());
         return Ok(());
     }
+    if let Some(Cmd::GamesKeygen { dir }) = &cli.cmd {
+        std::fs::create_dir_all(dir)?;
+        for g in f1r3games_games::GAMES {
+            let path = std::path::Path::new(dir).join(f1r3games_games::key_file_name(g.id));
+            if path.exists() {
+                println!("{}: kept {}", g.id, path.display());
+            } else {
+                write_private(&path, &keyfile::serialize(&keyfile::generate()))?;
+                println!("{}: wrote {}", g.id, path.display());
+            }
+        }
+        return Ok(());
+    }
+    if let Some(Cmd::GamesManifests { keys, entry_base, out }) = &cli.cmd {
+        let mut all = vec![];
+        for g in f1r3games_games::GAMES {
+            let uri = f1r3games_games::env_uri(&game_key(keys, g.id)?);
+            all.push(serde_json::json!({ "id": g.id, "envUri": uri, "manifest": g.manifest(&uri, entry_base).to_typed_json() }));
+        }
+        std::fs::write(out, serde_json::to_string_pretty(&all)?)?;
+        println!("wrote {} manifests to {out}; register them with `f1r3games register-games {out}` using the Cooperative's key", all.len());
+        return Ok(());
+    }
     let config = Config::from_toml(&read(&cli.config)?)?;
     let service_key = keyfile::deserialize(&read(&config.service_key_file)?).map_err(|e| anyhow::anyhow!("service key: {e}"))?;
     let env_key = keyfile::deserialize(&read(&config.env_key_file)?).map_err(|e| anyhow::anyhow!("env key: {e}"))?;
@@ -78,7 +128,16 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Cmd::Keygen { .. } => unreachable!(),
+        Cmd::Keygen { .. } | Cmd::GamesKeygen { .. } | Cmd::GamesManifests { .. } => unreachable!(),
+        Cmd::GamesInstall { keys, version } => {
+            for g in f1r3games_games::GAMES {
+                match bootstrap::ensure_game_env(&st, g, &game_key(&keys, g.id)?, version).await? {
+                    Some(id) => println!("{}: environment deploy {id}", g.id),
+                    None => println!("{}: environment is current", g.id),
+                }
+            }
+            Ok(())
+        }
         Cmd::Serve => {
             if st.config.bootstrap_env {
                 if let Err(e) = bootstrap::ensure_env(&st).await {

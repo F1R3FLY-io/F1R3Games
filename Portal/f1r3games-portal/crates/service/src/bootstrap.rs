@@ -72,3 +72,27 @@ pub async fn ensure_env(st: &State) -> anyhow::Result<Option<String>> {
     tracing::info!(deploy = %id, "games environment deploy submitted");
     Ok(Some(id))
 }
+
+/// The version registered under any environment URI (the probe template).
+pub async fn version_at(st: &State, uri: &str) -> anyhow::Result<Option<i64>> {
+    let t = catalogue::get(catalogue::ENV_PROBE).unwrap();
+    let mut args = BTreeMap::new();
+    args.insert("env_uri".to_string(), Value::Uri(uri.to_string()));
+    Ok(st.node.explore(&t.render(&args)?).await?.first().as_int())
+}
+
+/// Install or upgrade one game's environment under its key.
+pub async fn ensure_game_env(st: &State, game: &f1r3games_games::GameSpec, key: &k256::ecdsa::SigningKey, version: i64) -> anyhow::Result<Option<String>> {
+    let uri = f1r3games_games::env_uri(key);
+    if let Ok(Some(v)) = version_at(st, &uri).await {
+        if v >= version {
+            tracing::info!(game = game.id, %uri, version = v, "game environment present");
+            return Ok(None);
+        }
+    }
+    let valid_after = st.node.valid_after().await?;
+    let d = game.env_deploy(key, &st.service_key, &st.env_uri, version, now_ms(), valid_after, &st.config.shard_id, st.config.phlo_price, st.config.env_phlo_limit, st.config.deploy_ttl_ms);
+    let id = st.node.deploy(&d).await?;
+    tracing::info!(game = game.id, %uri, deploy = %id, "game environment deploy submitted");
+    Ok(Some(id))
+}

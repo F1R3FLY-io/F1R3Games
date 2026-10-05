@@ -46,6 +46,14 @@ export class GameHost {
     (e.source as Window).postMessage({ f1r3games: PROTOCOL, id: m.id, result }, this.origin);
   }
 
+  /** Game templates take the instance as their first argument; the host
+   *  supplies it when the game leaves it out. */
+  private withInstance(template: string, args: { [k: string]: Typed } = {}): { [k: string]: Typed } {
+    const t = this.game.templates.find((x) => x.id === template);
+    if (t && t.source.includes("{{instance}}") && !("instance" in args)) return { ...args, instance: this.instance };
+    return args;
+  }
+
   async dispatch(method: string, p: any): Promise<Result<unknown>> {
     const P = this.portal;
     switch (method) {
@@ -58,10 +66,10 @@ export class GameHost {
         }));
       case "deploy":
         return attempt("deploy", () =>
-          P.call(p.template, p.args as { [k: string]: Typed }, { game: this.game.id, origin: this.game.id, instance: this.instance, phloLimit: p.phloLimit }),
+          P.call(p.template, this.withInstance(p.template, p.args), { game: this.game.id, origin: this.game.id, instance: this.instance, phloLimit: p.phloLimit }),
         );
       case "read":
-        return attempt("read", () => P.read(p.template, p.args as { [k: string]: Typed }, this.game.id));
+        return attempt("read", () => P.read(p.template, this.withInstance(p.template, p.args), this.game.id));
       case "publishPlay":
         return attempt("publishPlay", () => P.publishPlay(this.instance, p.kind, p.header as Plain, p.body as string, this.game.id));
       case "linkPlays":

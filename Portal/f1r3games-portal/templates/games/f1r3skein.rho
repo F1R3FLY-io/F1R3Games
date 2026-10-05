@@ -1,0 +1,77 @@
+            // F1R3Skein: the live settings of a performance session — the scale
+            // and the drawn pitch and duration distributions (weighted state
+            // machines) the instrument plays from. Performances and the tunes
+            // snipped from them are gallery records (plays.publish, kinds
+            // "performance" and "tune", cross-linked with plays.link; a tune's
+            // header names its parents for reproduction). The tune body is
+            // opaque bytes until the skein Theory lands with the f1r3lang DDL.
+            // Keys: (instance, "scale"), (instance, "pitch"), (instance, "duration"),
+            // (instance, "performers").
+
+            contract env(@"setScale", @instance, @scale, ret) = {
+              new whoCh, mCh, ack in {
+                who!(*whoCh) |
+                for (@by, _ <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  for (@isIn <- mCh) {
+                    if (not isIn) { ret!((false, "join the session first")) }
+                    else {
+                      TreeHashMap!("set", state, (instance, "scale"), scale, *ack) |
+                      for (_ <- ack) { ret!((true, scale)) }
+                    }
+                  }
+                }
+              }
+            } |
+
+            // which: "pitch" or "duration"; machine: {"states": n, "edges": [{"from", "to", "weight"}]}
+            contract env(@"setDistribution", @instance, @which, @machine, ret) = {
+              new whoCh, mCh, ack in {
+                who!(*whoCh) |
+                for (@by, @ts <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  for (@isIn <- mCh) {
+                    if (not isIn) { ret!((false, "join the session first")) }
+                    else { if (which != "pitch" and which != "duration") { ret!((false, "which is pitch or duration")) }
+                    else { if (which == "duration" and machine.get("states") != 5) { ret!((false, "the duration machine has 5 states (whole to sixteenth)")) }
+                    else {
+                      TreeHashMap!("set", state, (instance, which), machine.set("by", by).set("at", ts), *ack) |
+                      for (_ <- ack) { ret!((true, which)) }
+                    } } }
+                  }
+                }
+              }
+            } |
+
+            // A performer announces themself on the session (the instrument calls this on start).
+            contract env(@"perform", @instance, @device, ret) = {
+              new whoCh, mCh, pCh, ack in {
+                who!(*whoCh) |
+                for (@by, @ts <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  TreeHashMap!("get", state, (instance, "performers"), *pCh) |
+                  for (@isIn <- mCh & @ps <- pCh) {
+                    if (not isIn) { ret!((false, "join the session first")) }
+                    else {
+                      match ps {
+                        Nil => { TreeHashMap!("set", state, (instance, "performers"), {by: {"device": device, "at": ts}}, *ack) }
+                        _ => { TreeHashMap!("set", state, (instance, "performers"), ps.set(by, {"device": device, "at": ts}), *ack) }
+                      } |
+                      for (_ <- ack) { ret!((true, by)) }
+                    }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"session", @instance, ret) = {
+              new sCh, pCh, dCh, fCh in {
+                TreeHashMap!("get", state, (instance, "scale"), *sCh) |
+                TreeHashMap!("get", state, (instance, "pitch"), *pCh) |
+                TreeHashMap!("get", state, (instance, "duration"), *dCh) |
+                TreeHashMap!("get", state, (instance, "performers"), *fCh) |
+                for (@scale <- sCh & @pitch <- pCh & @duration <- dCh & @performers <- fCh) {
+                  ret!((true, {"scale": scale, "pitch": pitch, "duration": duration, "performers": performers}))
+                }
+              }
+            }

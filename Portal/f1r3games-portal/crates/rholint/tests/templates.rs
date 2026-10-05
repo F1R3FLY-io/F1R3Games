@@ -57,3 +57,22 @@ fn the_parser_does_reject_broken_rholang() {
     assert!(f1r3games_rholint::parse("new x in { x!(").is_err());
     assert!(f1r3games_rholint::parse("for (@a <- x) { a!(1) | }").is_err());
 }
+
+#[test]
+fn every_game_environment_and_call_template_parses() {
+    let mut failures = vec![];
+    for g in f1r3games_games::GAMES {
+        let (env_key, service) = (keyfile::generate(), keyfile::generate());
+        let d = g.env_deploy(&env_key, &service, "rho:id:6zcfqnwnaqcwpeyuysx1rm48ndr6sgsbbgjuwf45i5nor3io7dr76j", 1, 1, 0, "root", 1, 1, 1);
+        if let Err(e) = f1r3games_rholint::parse(&d.data.term) {
+            failures.push(format!("{} env: {}", g.id, &e[..e.len().min(3000)]));
+        }
+        for (t, _) in g.templates(&f1r3games_games::env_uri(&env_key)) {
+            let args: BTreeMap<String, Value> = t.holes().unwrap().into_iter().map(|h| { let v = sample(&h); (h, v) }).collect();
+            if let Err(e) = f1r3games_rholint::parse(&t.render(&args).unwrap()) {
+                failures.push(format!("{}: {}", t.id, &e[..e.len().min(1500)]));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n\n"));
+}

@@ -1,0 +1,37 @@
+            // F1R3Pix: a shared 64 × 64 canvas per instance. Rows are stored
+            // under (instance, y), so painters on different rows never conflict.
+
+            contract env(@"place", @instance, @x, @y, @colour, ret) = {
+              new whoCh, mCh, rCh, ack in {
+                who!(*whoCh) |
+                for (@by, @ts <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  for (@isIn <- mCh) {
+                    if (not isIn) { ret!((false, "join the instance first")) }
+                    else { if (x < 0 or y < 0 or x >= 64 or y >= 64) { ret!((false, "off the canvas")) }
+                    else { if (colour.length() != 7 or colour.slice(0, 1) != "#") { ret!((false, "colour must be #RRGGBB")) }
+                    else {
+                      TreeHashMap!("get", state, (instance, y), *rCh) |
+                      for (@row <- rCh) {
+                        match row {
+                          Nil => { TreeHashMap!("set", state, (instance, y), {x: {"colour": colour, "by": by, "at": ts}}, *ack) }
+                          _ => { TreeHashMap!("set", state, (instance, y), row.set(x, {"colour": colour, "by": by, "at": ts}), *ack) }
+                        } |
+                        for (_ <- ack) { ret!((true, [x, y])) }
+                      }
+                    } } }
+                  }
+                }
+              }
+            } |
+
+            // The canvas: a list of 64 rows, each Nil or a map x -> cell.
+            contract env(@"state", @instance, ret) = {
+              new kCh, fCh in {
+                keysFor!(instance, 0, 64, [], *kCh) |
+                for (@keys <- kCh) {
+                  fetchAll!(keys, [], *fCh) |
+                  for (@rows <- fCh) { ret!((true, {"width": 64, "height": 64, "rows": rows})) }
+                }
+              }
+            }

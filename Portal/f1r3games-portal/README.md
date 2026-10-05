@@ -25,6 +25,8 @@ crates/wallet              keystore, signing policy, allowances, contacts; `wasm
 crates/node                F1R3Node-Rust HTTP client (validator for deploys, observer for reads)
 crates/service             axum service: prepare/send, explore/read routes, env bootstrap, testnet faucet
 crates/cli                 `f1r3games`, a Rust client using the wallet
+crates/games               the five games: their environments, call templates and manifests (docs/GAMES.md)
+templates/games/           each game's environment (prelude.rho + one body per game)
 crates/rholint             parses every template with the node's own Rholang parser
 web/                       the portal shell: React + TypeScript over the Rust wallet (WASM)
   src/core/                framework-free operations and the capabilities they use (see docs/GAZE-MAPPING.md)
@@ -64,6 +66,11 @@ A game registers a manifest (by the Cooperative) listing its entry URL, gallery
 kinds with optional preview renderers, and its templates with their hashes;
 the service renders a game's templates only from that manifest, and the
 wallet signs them only as registered, within the allowance set at launch.
+
+## Registering the games
+
+See `docs/GAMES.md`: `games-keygen`, `games-install`, `games-manifests`, then
+`f1r3games register-games manifests.json` with the Cooperative's key.
 
 ## Run against a local shard (ign1t10n)
 
