@@ -10,14 +10,15 @@ state behind an environment that checks membership against the portal.
 | Game | Moves (play templates, signed within the allowance) | Prompted | Reads | Galleries |
 |---|---|---|---|---|
 | F1R3Pix | `seat(instance, pk, want)`; `paint(instance, colour)` (your own cell; names no cell); `say(instance, to, envelope)` | — (payments go through the portal's `payments.send`, always prompted) | `board`, `seats`, `log`, `mail`, `outbox` | canvas (whole game or a moment; body = encoded history) |
-| F1R3Beat | `toggle(instance, voice, step, on)` on 8×16; `tempo(instance, bpm)` | — | `state` | pattern (header `parents` for lineage) |
+| F1R3Beat | `seat(instance, pk, want)` (random, row or claim); `set(instance, note)` (your own cell: a pitch from its row's palette, or Nil); `listen(instance, bpm)`; `say(instance, to, envelope)` | `setBreeder(address)` (F1R3Beat's key only); `epoch(epoch, record)` (the breeder only) | `grid`, `seats`, `log`, `mail`, `outbox`, `population`, `epochRecord`, `member` | pattern (the grid at a block as its canonical F1R3Score score; bred by the breeder), session (body = encoded history) |
 | F1R3Ink | `tags(instance, tags)`; `ink(instance, target, colour)` | — | `state` (tags and inks per player) | round |
 | F1R3SideChat | `addCharacter`, `takeWheel`, `release`, `addChapter`, `write(instance, chapter, charId, text)` as the character you drive, `comment` (any keyholder) | `meta`, `publishChapter` (host) | `state`, `chapter` (anyone: reader tier) | story |
 | F1R3Skein | `setScale`, `setDistribution(instance, "pitch"\|"duration", machine)`, `perform(instance, device)` | — | `session` | performance, tune (cross-linked; tune header `parents`) |
 
 Template ids are `<game>.<method>`. Galleries are filled by the game clients
 through the host protocol (`publishPlay`, `linkPlays`); engagement
-(`engage`) feeds Beat's and Skein's selection. SideChat tips move funds and
+(`engage`) feeds Beat's and Skein's selection; F1R3Beat's breeder is
+described below. SideChat tips move funds and
 are left to the wallet and to sponsorships. Skein's tune bodies are opaque
 bytes until the skein Theory lands with the f1r3lang DDL.
 
@@ -71,3 +72,28 @@ client's launch default is `{capacity: 61, seating: "random", palette: Nil, mess
 
 Manifests now carry `capabilities` (F1R3Pix: `["pay", "open"]`); the host
 refuses capability methods a game did not declare. Host protocol is 2.
+
+## F1R3Beat's breeder
+
+Patterns breed (F1R3Beat design v2 §10). A breeder key, named once by the
+holder of F1R3Beat's own environment key, runs one epoch at a time and records
+it on the chain together with its inputs, so anyone can recompute it.
+
+```sh
+# 1. With F1R3Beat's environment key imported and active (it needs a little phlo):
+f1r3games key import game-keys/f1r3beat-env-key.json && f1r3games key use <its address>
+f1r3games beat set-breeder <breeder address>
+# 2. With the breeder key active: launch a nursery instance for the brood, then run epochs.
+f1r3games key use <breeder address>
+f1r3games launch f1r3beat --visibility public           # the nursery; note its instance id
+f1r3games beat epoch --nursery <instance> --dry-run     # look first
+f1r3games -y beat epoch --nursery <instance>            # publish the brood and record the epoch
+# 3. Anyone:
+f1r3games beat verify --epoch 0
+```
+
+Run an epoch about once a day (Phase 4 of the design sets the interval from
+measurements). Each epoch admits the game patterns published since the last
+one and crossed patterns with at least two likes, draws two parents by weight
+(1 + plays + 3 · likes), publishes their brood, and culls one to three of the
+least weighted members older than three epochs, never below sixteen.

@@ -116,3 +116,41 @@ Not yet verified (needs a running shard): the environment's runtime
 behaviour (in particular the `/\ Int` and `/\ String` patterns, `toSet`,
 `nth` on the blake2b output and `fromPublicKey` with a 65-byte key), phlo
 per move and read, and the allowance and capacity defaults those costs imply.
+
+## F1R3Beat (design v2, 6 October 2026)
+
+* `templates/games/f1r3beat.rho` — the game environment: `seat` (random, row
+  or claim), `set`, `listen`, `say`; the breeder's `setBreeder` and `epoch`;
+  reads `grid`, `seats`, `log`, `mail`, `outbox`, `population`,
+  `epochRecord`, `member`. Parses with the node's parser.
+* `crates/games/src/beat.rs` — the grid's shape and palettes, seating, the
+  score bridge (grid → canonical F1R3Score score, and back), both play bodies,
+  F1R3Score's generator, reproduction, selection, culling, epochs and their
+  verification.
+* `crates/cli` — `f1r3games beat set-breeder | epoch | verify`.
+* Host protocol 2 gains three read-only methods every game may call:
+  `gallery({kind, days})` (the hosted game's own gallery kinds, at most 60
+  days), `playBody({id})` and `counts({id})` (the hosted game's plays only).
+* The game frame's sandbox gains `allow-downloads`, for F1R3Beat's Download MIDI.
+
+Departures from the design, each forced by the stack:
+
+* The breeder's `admit` and `cull` are one move, `epoch`, so an epoch is
+  atomic and its inputs (block, weights) stay on the chain for `verify`. It
+  and `setBreeder` are listed in the manifest as non-play templates (always
+  prompted), because the service runs only templates a manifest lists; the
+  environment refuses them from anyone but the breeder or the game key.
+* The breeder is named by the holder of F1R3Beat's environment key rather
+  than by the Cooperative's key: a game environment cannot read the
+  Cooperative's address without changing the shared game deploy.
+* A pattern's identity is blake2b-256 of its canonical score text. The
+  canonical text is unique per pattern, and the JavaScript client cannot
+  compute F1R3Score's structural digest; the Rust tests check, with
+  `F1R3SCORE` set, that F1R3Score accepts every canonical score and plays
+  exactly the grid's notes.
+* A crossed child joins the population at two likes: engagement counts do not
+  say who liked, so "someone other than the crosser" is approximated.
+* Uniform draws use F1R3Score's `below` (rejection zone `MAX - MAX % n`), so
+  the generator is F1R3Score's exactly; checked against `score-chance`.
+* Sound is a synthesised stand-in, identical on every device, until a
+  General MIDI sound set is cut and bundled.

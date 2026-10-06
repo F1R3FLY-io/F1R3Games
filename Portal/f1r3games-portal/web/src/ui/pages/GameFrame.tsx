@@ -50,12 +50,13 @@ export function GameFrame() {
             {/* allow-same-origin keeps the game on its real origin, so the host protocol can check
                 event.origin and address its replies to it; without it the frame's origin is opaque
                 ("null") and every message is dropped. The game is on another origin than the portal,
-                so this grants it nothing over the portal. */}
+                so this grants it nothing over the portal. allow-downloads lets a game hand the player a
+                file it made (F1R3Beat's Download MIDI). */}
             <iframe
               ref={frame}
               className="game"
               title={game.name}
-              sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-downloads"
               src={`${game.entry}${game.entry.includes("?") ? "&" : "?"}instance=${inst.id}&portal=${encodeURIComponent(location.origin)}`}
             />
             {inviting && <InviteDialog instance={inst.id} game={game} onClose={() => setInviting(false)} />}

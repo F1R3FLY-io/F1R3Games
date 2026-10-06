@@ -15,8 +15,10 @@ import type { Plain, Typed } from "./values";
 
 export const PROTOCOL = 2;
 
-/** Methods every game may call; anything else must be declared in the manifest's `capabilities`. */
-const BASE = new Set(["hello", "deploy", "read", "publishPlay", "linkPlays", "engage", "invite", "balance", "payments", "profiles"]);
+/** Methods every game may call; anything else must be declared in the manifest's `capabilities`.
+ *  `gallery`, `playBody` and `counts` (F1R3Beat design §10) read public chain data about the
+ *  game's own plays, for in-game galleries and crosses. */
+const BASE = new Set(["hello", "deploy", "read", "publishPlay", "linkPlays", "engage", "invite", "balance", "payments", "profiles", "gallery", "playBody", "counts"]);
 /** Declarable capabilities (F1R3Pix design §8). */
 export const CAPABILITIES = ["pay", "open"] as const;
 
@@ -136,6 +138,22 @@ export class GameHost {
         return attempt("linkPlays", () => P.linkPlays(p.id, p.other));
       case "engage":
         return attempt("engage", () => P.engage(p.play, p.kind));
+      case "gallery":
+        // This game's plays of one of its own gallery kinds, newest first, over at most 60 days.
+        return attempt("gallery", async () => {
+          if (!(this.game.galleries ?? []).some((g) => g.kind === p.kind)) throw new Error(`${this.game.id} has no ${String(p.kind)} gallery`);
+          const days = Number.isSafeInteger(p.days) ? Math.max(1, Math.min(60, p.days)) : 14;
+          return P.gallery(this.game.id, p.kind, days);
+        });
+      case "playBody":
+      case "counts":
+        // Only plays of this game: a game cannot use these to read other games' plays.
+        return attempt(method, async () => {
+          if (typeof p.id !== "string") throw new Error("id must be a play id");
+          const play = await P.play(p.id);
+          if (!play || play.game !== this.game.id) throw new Error(`no ${this.game.id} play ${p.id}`);
+          return method === "playBody" ? P.playBody(p.id) : P.counts(p.id);
+        });
       case "invite":
         if (this.game.contactsDialogue === false) return err("refused", "this game does not use the contact dialogue");
         this.hooks.openInvite();

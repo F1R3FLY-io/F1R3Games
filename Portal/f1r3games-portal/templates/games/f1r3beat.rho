@@ -1,57 +1,754 @@
-            // F1R3Beat: an 8-voice × 16-step pattern per instance, and its tempo.
-            // Voices are stored under (instance, voice); the tempo under
-            // (instance, "tempo"). Patterns are published to the gallery by the
-            // game, with their parents in the header for lineage.
+            // F1R3Beat (design v2, 6 October 2026): one cell per player on a grid
+            // of five rows (drums, bass, guitar, keys, sax) by S columns; the
+            // column, the subdivision of the beat, is set with the meter and bars
+            // when the game is set up (D5). The only board move is `set`, which
+            // names no cell: a player sets only the cell they are seated at, to
+            // one pitch from its row's palette or to nothing. `listen` records the
+            // tempo a player hears the loop at (D7); it changes nothing anyone
+            // else hears. Messages are sealed envelopes, as in F1R3Pix.
+            //
+            // State, all scoped by instance (design §5.2):
+            //   ("seat", i, a)  {"cell": c, "pk": bytes, "listen": bpm, "at": ts, "h": height}
+            //   ("cell", i, c)  {"owner": a, "note": name | Nil, "at", "h", "n"}
+            //   ("hist", i, c)  [[h, ts, note], ...] oldest first
+            //   ("out", i, a)   [{"to", "env", "at", "h"}, ...]
+            // and, written only by the breeder key (§10):
+            //   "breeder"       the breeder's address, named by the holder of this game's key
+            //   "epochNo"       the last epoch run
+            //   "popIndex"      [digest, ...] the population
+            //   ("pop", d)      {"digest", "play", "meter", "column", "steps", "origin", "parents", "born", "culled"?}
+            //   ("epoch", e)    the epoch's record, kept for verification
+            // A cell's index is c = 5 * step + row. Seeded cells (D16) are read from
+            // the configuration until someone sits there. After seating, every cell,
+            // hist, seat and out key has exactly one writer.
+            // Lists have no `contains` on F1R3Node-Rust: test membership with
+            // `.toSet().contains(x)`. Nil is dropped from lists in the node's JSON,
+            // so readers treat a missing last element of a hist or log entry as Nil.
+            new blockData(`rho:block:data`),
+                blake2b(`rho:crypto:blake2b256Hash`),
+                height, operator, cfgOf, scaleOk, noteOk, seedOk, seedMapOf,
+                seatAt, probeAll, probeRow, allSeated, appendTo, without,
+                gridCells, seatsOf, logCells, filterHist, mailFrom, filterMail, filterOut, membersFrom,
+                kitCh, pcsCh, digitsCh, scalesCh, rangesCh
+            in {
+              kitCh!(Set("kick", "rim", "snare", "clap", "chh", "phh", "ltom", "ohh", "mtom", "crash", "htom", "ride")) |
+              pcsCh!({"C": 0, "C#": 1, "D": 2, "D#": 3, "E": 4, "F": 5, "F#": 6, "G": 7, "G#": 8, "A": 9, "A#": 10, "B": 11}) |
+              digitsCh!({"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9}) |
+              scalesCh!({"major": Set(0, 2, 4, 5, 7, 9, 11), "minor": Set(0, 2, 3, 5, 7, 8, 10), "dorian": Set(0, 2, 3, 5, 7, 9, 10),
+                         "pentatonic": Set(0, 2, 4, 7, 9), "minor-pentatonic": Set(0, 3, 5, 7, 10), "blues": Set(0, 3, 5, 6, 7, 10),
+                         "chromatic": Set(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)}) |
+              // MIDI ranges by row; the drum row's palette is the kit.
+              rangesCh!([[0, 0], [28, 55], [40, 76], [36, 84], [44, 75]]) |
+              for (@kit <- kitCh & @pcs <- pcsCh & @digits <- digitsCh & @scales <- scalesCh & @ranges <- rangesCh) {
 
-            contract env(@"toggle", @instance, @voice, @step, @on, ret) = {
-              new whoCh, mCh, rCh, ack in {
-                who!(*whoCh) |
-                for (@by, _ <- whoCh) {
-                  member!(instance, by, *mCh) |
-                  for (@isIn <- mCh) {
-                    if (not isIn) { ret!((false, "join the instance first")) }
-                    else { if (voice < 0 or voice >= 8 or step < 0 or step >= 16) { ret!((false, "off the pattern")) }
+              // ------------------------------------------------ helpers
+
+              contract height(ret) = {
+                new bd in { blockData!(*bd) | for (@n, _, _ <- bd) { ret!(n) } }
+              } |
+
+              // The address of this game's key: it alone may name the breeder.
+              contract operator(ret) = { vaultAddress!("fromPublicKey", {{public_key}}, *ret) } |
+
+              contract scaleOk(@scale, ret) = {
+                match scale {
+                  Nil => { ret!(true) }
+                  [kind /\ String, tonic /\ String] => { ret!(scales.contains(kind) and pcs.contains(tonic)) }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // Is `note` in the palette of `row` (D4)? Pitched notes are written
+              // in scientific notation with sharps; the drum row's notes are kit pieces.
+              contract noteOk(@row, @note, @scale, ret) = {
+                match note {
+                  s /\ String => {
+                    if (row == 0) { ret!(kit.contains(s)) }
+                    else { if (s.length() < 2 or s.length() > 4) { ret!(false) }
                     else {
-                      TreeHashMap!("get", state, (instance, voice), *rCh) |
-                      for (@row <- rCh) {
-                        match row {
-                          Nil => { TreeHashMap!("set", state, (instance, voice), {step: on}, *ack) }
-                          _ => { TreeHashMap!("set", state, (instance, voice), row.set(step, on), *ack) }
-                        } |
-                        for (_ <- ack) { ret!((true, [voice, step, on])) }
+                      match [s.slice(0, s.length() - 1), s.slice(s.length() - 1, s.length())] {
+                        [pc, oc] => {
+                          if (not pcs.contains(pc) or not digits.contains(oc)) { ret!(false) }
+                          else {
+                            match [12 * (digits.get(oc) + 1) + pcs.get(pc), ranges.nth(row)] {
+                              [m, [lo, hi]] => {
+                                if (m < lo or m > hi) { ret!(false) }
+                                else {
+                                  match scale {
+                                    Nil => { ret!(true) }
+                                    [kind, tonic] => { ret!(scales.get(kind).contains((m + 12 - pcs.get(tonic)) % 12)) }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
                       }
                     } }
                   }
+                  _ => { ret!(false) }
                 }
-              }
-            } |
+              } |
 
-            contract env(@"tempo", @instance, @bpm, ret) = {
-              new whoCh, mCh, ack in {
-                who!(*whoCh) |
-                for (@by, _ <- whoCh) {
-                  member!(instance, by, *mCh) |
-                  for (@isIn <- mCh) {
-                    if (not isIn) { ret!((false, "join the instance first")) }
-                    else { if (bpm < 40 or bpm > 240) { ret!((false, "tempo must be 40 to 240 bpm")) }
+              // A seed (D16): Nil, or {"play", "digest", "cells": [[c, note], ...]} with
+              // distinct cells on the grid and notes in their rows' ranges.
+              contract seedOk(@seed, @cells, ret) = {
+                match seed {
+                  Nil => { ret!(true) }
+                  {"play": _ /\ String, "digest": _ /\ String, "cells": list /\ List} => {
+                    if (list.length() > cells) { ret!(false) }
                     else {
-                      TreeHashMap!("set", state, (instance, "tempo"), bpm, *ack) |
-                      for (_ <- ack) { ret!((true, bpm)) }
-                    } }
+                      new loop in {
+                        contract loop(@rest, @seen) = {
+                          match rest {
+                            [] => { ret!(true) }
+                            [[c /\ Int, v /\ String] ...more] => {
+                              if (c < 0 or c >= cells or seen.contains(c)) { ret!(false) }
+                              else {
+                                new vCh in {
+                                  noteOk!(c % 5, v, Nil, *vCh) |
+                                  for (@ok <- vCh) { if (ok) { loop!(more, seen.add(c)) } else { ret!(false) } }
+                                }
+                              }
+                            }
+                            _ => { ret!(false) }
+                          }
+                        } |
+                        loop!(list, Set())
+                      }
+                    }
                   }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              contract seedMapOf(@seed, ret) = {
+                match seed {
+                  Nil => { ret!({}) }
+                  _ => {
+                    new loop in {
+                      contract loop(@rest, @acc) = {
+                        match rest {
+                          [] => { ret!(acc) }
+                          [[c, v] ...more] => { loop!(more, acc.set(c, v)) }
+                        }
+                      } |
+                      loop!(seed.get("cells"), {})
+                    }
+                  }
+                }
+              } |
+
+              // The instance and its validated configuration (R1: no defaults).
+              // Answers (true, cfg + {"steps", "cells", "seedMap"}, inst) or (false, reason, Nil).
+              contract cfgOf(@instance, ret) = {
+                new iCh in {
+                  instanceOf!(instance, *iCh) |
+                  for (@inst <- iCh) {
+                    if (inst == Nil) { ret!(false, "unknown instance", Nil) }
+                    else {
+                      match inst.get("config") {
+                        {"meter": [n /\ Int, d /\ Int], "bars": bars /\ Int, "column": [1, k /\ Int], "capacity": cap /\ Int,
+                         "seating": seating /\ String, "scale": scale, "tempo": tempo /\ Int, "seed": seed, "messageLimit": limit /\ Int} => {
+                          if (n < 1 or n > 32 or not Set(2, 4, 8, 16).contains(d) or not Set(4, 8, 16, 32, 6, 12, 24).contains(k) or bars < 1
+                              or (n * k) % d != 0) { ret!(false, "bad config", Nil) }
+                          else {
+                            match bars * n * k / d {
+                              steps => {
+                                if (steps < 1 or steps > 64 or cap < 1 or cap > 5 * steps or tempo < 40 or tempo > 240
+                                    or limit < 1 or limit > 65536
+                                    or not (seating == "random" or seating == "claim" or seating == "row")) { ret!(false, "bad config", Nil) }
+                                else {
+                                  new sCh, dCh, mCh in {
+                                    scaleOk!(scale, *sCh) | seedOk!(seed, 5 * steps, *dCh) |
+                                    for (@sOk <- sCh & @dOk <- dCh) {
+                                      if (not sOk or not dOk) { ret!(false, "bad config", Nil) }
+                                      else {
+                                        seedMapOf!(seed, *mCh) |
+                                        for (@seedMap <- mCh) {
+                                          ret!(true, {"meter": [n, d], "bars": bars, "column": k, "capacity": cap, "seating": seating,
+                                                      "scale": scale, "tempo": tempo, "seed": seed, "messageLimit": limit,
+                                                      "steps": steps, "cells": 5 * steps, "seedMap": seedMap}, inst)
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        _ => { ret!(false, "bad config", Nil) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // Write a seat and its cell; a seeded cell keeps its note (D16).
+              contract seatAt(@instance, @by, @pk, @c, @ts, @cfg, ret) = {
+                new hCh, a1, a2 in {
+                  height!(*hCh) |
+                  for (@h <- hCh) {
+                    TreeHashMap!("set", state, ("seat", instance, by), {"cell": c, "pk": pk, "listen": cfg.get("tempo"), "at": ts, "h": h}, *a1) |
+                    TreeHashMap!("set", state, ("cell", instance, c),
+                      {"owner": by, "note": cfg.get("seedMap").getOrElse(c, Nil), "at": ts, "h": h, "n": 0}, *a2) |
+                    for (_ <- a1 & _ <- a2) { ret!((true, c)) }
+                  }
+                }
+              } |
+
+              // Random seating (D2): the first free cell from `start`, in index order, wrapping.
+              contract probeAll(@instance, @by, @pk, @ts, @cfg, @start, @t, ret) = {
+                if (t >= cfg.get("cells")) { ret!((false, "full")) }
+                else {
+                  new vCh in {
+                    TreeHashMap!("get", state, ("cell", instance, (start + t) % cfg.get("cells")), *vCh) |
+                    for (@v <- vCh) {
+                      if (v == Nil) { seatAt!(instance, by, pk, (start + t) % cfg.get("cells"), ts, cfg, *ret) }
+                      else { probeAll!(instance, by, pk, ts, cfg, start, t + 1, *ret) }
+                    }
+                  }
+                }
+              } |
+
+              // Row seating (D2): the first free cell of `row` from step `start`, wrapping.
+              contract probeRow(@instance, @by, @pk, @ts, @cfg, @row, @start, @t, ret) = {
+                if (t >= cfg.get("steps")) { ret!((false, "that row is full")) }
+                else {
+                  new vCh in {
+                    TreeHashMap!("get", state, ("cell", instance, 5 * ((start + t) % cfg.get("steps")) + row), *vCh) |
+                    for (@v <- vCh) {
+                      if (v == Nil) { seatAt!(instance, by, pk, 5 * ((start + t) % cfg.get("steps")) + row, ts, cfg, *ret) }
+                      else { probeRow!(instance, by, pk, ts, cfg, row, start, t + 1, *ret) }
+                    }
+                  }
+                }
+              } |
+
+              contract allSeated(@instance, @to, ret) = {
+                match to {
+                  [] => { ret!(true) }
+                  [a ...rest] => {
+                    new sCh in {
+                      TreeHashMap!("get", state, ("seat", instance, a), *sCh) |
+                      for (@s <- sCh) { if (s == Nil) { ret!(false) } else { allSeated!(instance, rest, *ret) } }
+                    }
+                  }
+                }
+              } |
+
+              contract appendTo(@key, @item, ret) = {
+                new lCh, ack in {
+                  TreeHashMap!("get", state, key, *lCh) |
+                  for (@l <- lCh) {
+                    match l {
+                      Nil => { TreeHashMap!("set", state, key, [item], *ack) | for (_ <- ack) { ret!(0) } }
+                      _ => { TreeHashMap!("set", state, key, l ++ [item], *ack) | for (_ <- ack) { ret!(l.length()) } }
+                    }
+                  }
+                }
+              } |
+
+              // `list` without the members of the set `drop`, keeping order.
+              contract without(@list, @drop, @acc, ret) = {
+                match list {
+                  [] => { ret!(acc) }
+                  [x ...rest] => { if (drop.contains(x)) { without!(rest, drop, acc, *ret) } else { without!(rest, drop, acc ++ [x], *ret) } }
+                }
+              } |
+
+              // ------------------------------------------------ moves (play templates)
+
+              // seat(instance, pk, want): pk is the caller's uncompressed public key,
+              // checked against the caller's address; want is Nil (random seating),
+              // a row 0..4 (row seating) or a cell index (claim seating).
+              contract env(@"seat", @instance, @pk, @want, ret) = {
+                new whoCh, cCh, aCh, sCh, hCh in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        vaultAddress!("fromPublicKey", pk, *aCh) |
+                        for (@owner <- aCh) {
+                          if (owner != by) { ret!((false, "public key is not the caller's")) }
+                          else {
+                            TreeHashMap!("get", state, ("seat", instance, by), *sCh) |
+                            for (@seat <- sCh) {
+                              if (seat != Nil) { ret!((true, seat.get("cell"))) }
+                              else {
+                                blake2b!((instance ++ by).toUtf8Bytes(), *hCh) |
+                                for (@h <- hCh) {
+                                  // h read as a big-endian u32 from its first four bytes, as F1R3Pix
+                                  match ((h.nth(0) * 256 + h.nth(1)) * 256 + h.nth(2)) * 256 + h.nth(3) {
+                                    start => {
+                                      if (cfg.get("seating") == "random") {
+                                        if (want != Nil) { ret!((false, "this instance seats at random")) }
+                                        else { probeAll!(instance, by, pk, ts, cfg, start % cfg.get("cells"), 0, *ret) }
+                                      } else { if (cfg.get("seating") == "row") {
+                                        match want {
+                                          row /\ Int => {
+                                            if (row < 0 or row > 4) { ret!((false, "row seating needs a row 0 to 4")) }
+                                            else { probeRow!(instance, by, pk, ts, cfg, row, start % cfg.get("steps"), 0, *ret) }
+                                          }
+                                          _ => { ret!((false, "row seating needs a row 0 to 4")) }
+                                        }
+                                      } else {
+                                        match want {
+                                          c /\ Int => {
+                                            if (c < 0 or c >= cfg.get("cells")) { ret!((false, "off the grid")) }
+                                            else {
+                                              new vCh in {
+                                                TreeHashMap!("get", state, ("cell", instance, c), *vCh) |
+                                                for (@v <- vCh) {
+                                                  if (v != Nil) { ret!((false, "taken")) }
+                                                  else { seatAt!(instance, by, pk, c, ts, cfg, *ret) }
+                                                }
+                                              }
+                                            }
+                                          }
+                                          _ => { ret!((false, "claim seating needs a cell index")) }
+                                        }
+                                      } }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // set(instance, note): the caller's own cell, while active; note is Nil
+              // (nothing) or a member of the palette of the cell's row.
+              contract env(@"set", @instance, @note, ret) = {
+                new whoCh, cCh, sCh, vCh, oCh, hCh, a1, a2 in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") != "active") { ret!((false, "the game is not active")) }
+                      else {
+                        TreeHashMap!("get", state, ("seat", instance, by), *sCh) |
+                        for (@seat <- sCh) {
+                          if (seat == Nil) { ret!((false, "take a seat first")) }
+                          else {
+                            match seat.get("cell") {
+                              c => {
+                                if (note == Nil) { vCh!(true) } else { noteOk!(c % 5, note, cfg.get("scale"), *vCh) } |
+                                for (@valid <- vCh) {
+                                  if (not valid) { ret!((false, "not in this row's palette")) }
+                                  else {
+                                    TreeHashMap!("get", state, ("cell", instance, c), *oCh) |
+                                    height!(*hCh) |
+                                    for (@cell <- oCh & @h <- hCh) {
+                                      TreeHashMap!("set", state, ("cell", instance, c),
+                                        {"owner": by, "note": note, "at": ts, "h": h, "n": cell.get("n") + 1}, *a1) |
+                                      appendTo!(("hist", instance, c), [h, ts, note], *a2) |
+                                      for (_ <- a1 & _ <- a2) { ret!((true, {"cell": c, "note": note, "h": h})) }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // listen(instance, bpm): the tempo the caller hears the loop at (D7).
+              contract env(@"listen", @instance, @bpm, ret) = {
+                new whoCh, cCh, sCh, ack in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        match bpm {
+                          b /\ Int => {
+                            if (b < 40 or b > 240) { ret!((false, "tempo must be 40 to 240 bpm")) }
+                            else {
+                              TreeHashMap!("get", state, ("seat", instance, by), *sCh) |
+                              for (@seat <- sCh) {
+                                if (seat == Nil) { ret!((false, "take a seat first")) }
+                                else {
+                                  TreeHashMap!("set", state, ("seat", instance, by), seat.set("listen", b), *ack) |
+                                  for (_ <- ack) { ret!((true, b)) }
+                                }
+                              }
+                            }
+                          }
+                          _ => { ret!((false, "tempo must be a whole number of bpm")) }
+                        }
+                      } }
+                    }
+                  }
+                }
+              } |
+
+              // say(instance, to, envelope): as F1R3Pix.
+              contract env(@"say", @instance, @to, @envelope, ret) = {
+                new whoCh, cCh, sCh, hCh in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        match [to, envelope] {
+                          [rcpts /\ List, env /\ ByteArray] => {
+                            if (rcpts.length() < 1 or rcpts.length() > 64 or rcpts.toSet().size() != rcpts.length()
+                                or rcpts.toSet().contains(by)) { ret!((false, "recipients must be 1 to 64 distinct other players")) }
+                            else { if (env.length() > cfg.get("messageLimit")) { ret!((false, "message too long")) }
+                            else {
+                              allSeated!(instance, rcpts, *sCh) |
+                              for (@seated <- sCh) {
+                                if (not seated) { ret!((false, "every recipient must be seated")) }
+                                else {
+                                  height!(*hCh) |
+                                  for (@h <- hCh) {
+                                    new aCh in {
+                                      appendTo!(("out", instance, by), {"to": rcpts, "env": env, "at": ts, "h": h}, *aCh) |
+                                      for (@seq <- aCh) { ret!((true, seq)) }
+                                    }
+                                  }
+                                }
+                              }
+                            } }
+                          }
+                          _ => { ret!((false, "to must be a list of addresses and envelope bytes")) }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ the breeder (§10)
+
+              // setBreeder(address): only the holder of this game's key may name the breeder.
+              contract env(@"setBreeder", @address, ret) = {
+                new whoCh, oCh, ack in {
+                  who!(*whoCh) | operator!(*oCh) |
+                  for (@by, _ <- whoCh & @op <- oCh) {
+                    if (by != op) { ret!((false, "only the holder of the F1R3Beat key may name the breeder")) }
+                    else {
+                      match address {
+                        a /\ String => { TreeHashMap!("set", state, "breeder", a, *ack) | for (_ <- ack) { ret!((true, a)) } }
+                        _ => { ret!((false, "address must be a string")) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // epoch(e, record): the breeder's epoch in one step, so that it is atomic
+              // and its inputs stay on the chain for verification (§10.7). record =
+              //   {"block": hash, "weights": {digest: w}, "parents": [dA, dB] | [],
+              //    "admitted": [member, ...], "culled": [digest, ...]}
+              // with members {"digest", "play", "meter", "column", "steps", "origin", "parents"}.
+              contract env(@"epoch", @e, @record, ret) = {
+                new whoCh, bCh, nCh, iCh in {
+                  who!(*whoCh) |
+                  TreeHashMap!("get", state, "breeder", *bCh) |
+                  TreeHashMap!("get", state, "epochNo", *nCh) |
+                  TreeHashMap!("get", state, "popIndex", *iCh) |
+                  for (@by, @ts <- whoCh & @breeder <- bCh & @last <- nCh & @index <- iCh) {
+                    if (breeder == Nil or by != breeder) { ret!((false, "only the breeder may run an epoch")) }
+                    else {
+                      match [e, record] {
+                        [epoch /\ Int, {"block": _, "weights": _, "parents": _, "admitted": admitted /\ List, "culled": culled /\ List}] => {
+                          if (last != Nil and epoch <= last) { ret!((false, "epochs must increase")) }
+                          else {
+                            new loop, idxCh, wCh, ack1, ack2, ack3 in {
+                              match index { Nil => { idxCh!([]) } _ => { idxCh!(index) } } |
+                              for (@idx <- idxCh) {
+                                // Admit: write each member and append new digests to the index.
+                                contract loop(@rest, @acc) = {
+                                  match rest {
+                                    [] => { wCh!(acc) }
+                                    [m ...more] => {
+                                      match m.get("digest") {
+                                        d /\ String => {
+                                          new a in {
+                                            TreeHashMap!("set", state, ("pop", d), m.set("born", epoch), *a) |
+                                            for (_ <- a) { if (acc.toSet().contains(d)) { loop!(more, acc) } else { loop!(more, acc ++ [d]) } }
+                                          }
+                                        }
+                                        _ => { loop!(more, acc) }
+                                      }
+                                    }
+                                  }
+                                } |
+                                loop!(admitted, idx) |
+                                for (@grown <- wCh) {
+                                  new cl, dCh in {
+                                    // Cull: mark each member, then drop it from the index.
+                                    contract cl(@rest) = {
+                                      match rest {
+                                        [] => { dCh!(true) }
+                                        [d ...more] => {
+                                          new g, a in {
+                                            TreeHashMap!("get", state, ("pop", d), *g) |
+                                            for (@m <- g) {
+                                              if (m == Nil) { cl!(more) }
+                                              else { TreeHashMap!("set", state, ("pop", d), m.set("culled", epoch), *a) | for (_ <- a) { cl!(more) } }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    } |
+                                    cl!(culled) |
+                                    for (_ <- dCh) {
+                                      new kCh in {
+                                        without!(grown, culled.toSet(), [], *kCh) |
+                                        for (@kept <- kCh) {
+                                          TreeHashMap!("set", state, "popIndex", kept, *ack1) |
+                                          TreeHashMap!("set", state, "epochNo", epoch, *ack2) |
+                                          TreeHashMap!("set", state, ("epoch", epoch), record.set("at", ts), *ack3) |
+                                          for (_ <- ack1 & _ <- ack2 & _ <- ack3) { ret!((true, kept.length())) }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                        _ => { ret!((false, "an epoch is a number and a record")) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ reads (explore templates)
+
+              contract gridCells(@instance, @i, @n, @seedMap, @acc, ret) = {
+                if (i >= n) { ret!(acc) }
+                else {
+                  new vCh in {
+                    TreeHashMap!("get", state, ("cell", instance, i), *vCh) |
+                    for (@v <- vCh) {
+                      if (v != Nil) { gridCells!(instance, i + 1, n, seedMap, acc ++ [v.set("c", i)], *ret) }
+                      else { if (seedMap.contains(i)) { gridCells!(instance, i + 1, n, seedMap, acc ++ [{"c": i, "note": seedMap.get(i), "seeded": true}], *ret) }
+                      else { gridCells!(instance, i + 1, n, seedMap, acc, *ret) } }
+                    }
+                  }
+                }
+              } |
+
+              contract env(@"grid", @instance, ret) = {
+                new cCh, gCh, pCh in {
+                  cfgOf!(instance, *cCh) |
+                  for (@ok, @cfg, @inst <- cCh) {
+                    if (not ok) { ret!((false, cfg)) }
+                    else {
+                      gridCells!(instance, 0, cfg.get("cells"), cfg.get("seedMap"), [], *gCh) |
+                      match cfg.get("seed") { Nil => { pCh!(Nil) } s => { pCh!(s.get("play")) } } |
+                      for (@cells <- gCh & @seedPlay <- pCh) {
+                        ret!((true, {"meter": cfg.get("meter"), "bars": cfg.get("bars"), "column": cfg.get("column"), "steps": cfg.get("steps"),
+                                     "capacity": cfg.get("capacity"), "seating": cfg.get("seating"), "scale": cfg.get("scale"),
+                                     "tempo": cfg.get("tempo"), "messageLimit": cfg.get("messageLimit"), "seed": seedPlay,
+                                     "status": inst.get("status"), "cells": cells}))
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract seatsOf(@instance, @addresses, @acc, ret) = {
+                match addresses {
+                  [] => { ret!(acc) }
+                  [a ...rest] => {
+                    new sCh in {
+                      TreeHashMap!("get", state, ("seat", instance, a), *sCh) |
+                      for (@s <- sCh) {
+                        if (s == Nil) { seatsOf!(instance, rest, acc, *ret) }
+                        else { seatsOf!(instance, rest, acc.set(a, {"cell": s.get("cell"), "pk": s.get("pk"), "listen": s.get("listen")}), *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract env(@"seats", @instance, ret) = {
+                new pCh, sCh in {
+                  participants!(instance, *pCh) |
+                  for (@ps <- pCh) {
+                    seatsOf!(instance, ps, {}, *sCh) |
+                    for (@m <- sCh) { ret!((true, m)) }
+                  }
+                }
+              } |
+
+              contract filterHist(@hist, @owner, @c, @from, @to, @acc, ret) = {
+                match hist {
+                  [] => { ret!(acc) }
+                  [[h, ts, v] ...rest] => {
+                    if (h >= from and h < to) { filterHist!(rest, owner, c, from, to, acc ++ [[h, ts, owner, c, v]], *ret) }
+                    else { filterHist!(rest, owner, c, from, to, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract logCells(@instance, @i, @n, @from, @to, @acc, ret) = {
+                if (i >= n) { ret!(acc) }
+                else {
+                  new vCh, hCh, fCh in {
+                    TreeHashMap!("get", state, ("cell", instance, i), *vCh) |
+                    TreeHashMap!("get", state, ("hist", instance, i), *hCh) |
+                    for (@v <- vCh & @hist <- hCh) {
+                      if (v == Nil or hist == Nil) { logCells!(instance, i + 1, n, from, to, acc, *ret) }
+                      else {
+                        filterHist!(hist, v.get("owner"), i, from, to, acc, *fCh) |
+                        for (@acc2 <- fCh) { logCells!(instance, i + 1, n, from, to, acc2, *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // Sets with from <= h < to, as [h, ts, owner, c, note], cell by cell in
+              // index order; readers order them as F1R3Pix §5.5 says.
+              contract env(@"log", @instance, @from, @to, ret) = {
+                new cCh, lCh in {
+                  cfgOf!(instance, *cCh) |
+                  for (@ok, @cfg, _ <- cCh) {
+                    if (not ok) { ret!((false, cfg)) }
+                    else {
+                      logCells!(instance, 0, cfg.get("cells"), from, to, [], *lCh) |
+                      for (@entries <- lCh) { ret!((true, entries)) }
+                    }
+                  }
+                }
+              } |
+
+              contract filterMail(@sender, @outbox, @address, @after, @seq, @acc, ret) = {
+                match outbox {
+                  [] => { ret!(acc) }
+                  [m ...rest] => {
+                    if (seq > after and m.get("to").toSet().contains(address)) {
+                      filterMail!(sender, rest, address, after, seq + 1, acc ++ [m.set("from", sender).set("seq", seq)], *ret)
+                    } else { filterMail!(sender, rest, address, after, seq + 1, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract mailFrom(@instance, @senders, @address, @cursor, @acc, ret) = {
+                match senders {
+                  [] => { ret!(acc) }
+                  [s ...rest] => {
+                    new oCh, fCh in {
+                      TreeHashMap!("get", state, ("out", instance, s), *oCh) |
+                      for (@out <- oCh) {
+                        if (out == Nil) { mailFrom!(instance, rest, address, cursor, acc, *ret) }
+                        else {
+                          filterMail!(s, out, address, cursor.getOrElse(s, -1), 0, acc, *fCh) |
+                          for (@acc2 <- fCh) { mailFrom!(instance, rest, address, cursor, acc2, *ret) }
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract env(@"mail", @instance, @address, @cursor, ret) = {
+                new pCh, mCh in {
+                  participants!(instance, *pCh) |
+                  for (@ps <- pCh) {
+                    match cursor {
+                      c /\ Map => { mailFrom!(instance, ps, address, c, [], *mCh) }
+                      _ => { mailFrom!(instance, ps, address, {}, [], *mCh) }
+                    } |
+                    for (@m <- mCh) { ret!((true, m)) }
+                  }
+                }
+              } |
+
+              contract filterOut(@out, @from, @seq, @acc, ret) = {
+                match out {
+                  [] => { ret!(acc) }
+                  [m ...rest] => {
+                    if (seq >= from) { filterOut!(rest, from, seq + 1, acc ++ [m.set("seq", seq)], *ret) }
+                    else { filterOut!(rest, from, seq + 1, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract env(@"outbox", @instance, @address, @from, ret) = {
+                new oCh, fCh in {
+                  TreeHashMap!("get", state, ("out", instance, address), *oCh) |
+                  for (@out <- oCh) {
+                    if (out == Nil) { ret!((true, [])) }
+                    else { filterOut!(out, from, 0, [], *fCh) | for (@l <- fCh) { ret!((true, l)) } }
+                  }
+                }
+              } |
+
+              contract membersFrom(@digests, @i, @end, @acc, ret) = {
+                if (i >= end) { ret!(acc) }
+                else {
+                  new mCh in {
+                    TreeHashMap!("get", state, ("pop", digests.nth(i)), *mCh) |
+                    for (@m <- mCh) { if (m == Nil) { membersFrom!(digests, i + 1, end, acc, *ret) } else { membersFrom!(digests, i + 1, end, acc ++ [m], *ret) } }
+                  }
+                }
+              } |
+
+              // The population from position `cursor`, at most 64 members per read.
+              contract env(@"population", @cursor, ret) = {
+                new iCh, nCh, bCh, mCh in {
+                  TreeHashMap!("get", state, "popIndex", *iCh) |
+                  TreeHashMap!("get", state, "epochNo", *nCh) |
+                  TreeHashMap!("get", state, "breeder", *bCh) |
+                  for (@index <- iCh & @epoch <- nCh & @breeder <- bCh) {
+                    match [index, cursor] {
+                      [Nil, _] => { ret!((true, {"epoch": epoch, "breeder": breeder, "size": 0, "members": []})) }
+                      [idx, c /\ Int] => {
+                        if (c < 0) { ret!((false, "cursor must not be negative")) }
+                        else {
+                          if (c + 64 < idx.length()) { membersFrom!(idx, c, c + 64, [], *mCh) } else { membersFrom!(idx, c, idx.length(), [], *mCh) } |
+                          for (@ms <- mCh) { ret!((true, {"epoch": epoch, "breeder": breeder, "size": idx.length(), "members": ms})) }
+                        }
+                      }
+                      _ => { ret!((false, "cursor must be a whole number")) }
+                    }
+                  }
+                }
+              } |
+
+              // A population member's record by digest, culled or not (for verification).
+              contract env(@"member", @d, ret) = {
+                new mCh in {
+                  TreeHashMap!("get", state, ("pop", d), *mCh) |
+                  for (@m <- mCh) { ret!((true, m)) }
+                }
+              } |
+
+              contract env(@"epochRecord", @e, ret) = {
+                new rCh in {
+                  TreeHashMap!("get", state, ("epoch", e), *rCh) |
+                  for (@r <- rCh) { ret!((true, r)) }
                 }
               }
-            } |
-
-            contract env(@"state", @instance, ret) = {
-              new kCh, fCh, tCh in {
-                keysFor!(instance, 0, 8, [], *kCh) |
-                TreeHashMap!("get", state, (instance, "tempo"), *tCh) |
-                for (@keys <- kCh & @tempo <- tCh) {
-                  fetchAll!(keys, [], *fCh) |
-                  for (@voices <- fCh) {
-                    ret!((true, {"voices": voices, "steps": 16, "tempo": tempo}))
-                  }
-                }
               }
             }

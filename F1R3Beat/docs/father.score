@@ -1,12 +1,13 @@
+// F1R3Beat pattern, canonical form v2 · meter 4/4 · bars 1 · column 1/16 · columns 16
 score F1R3Beat
 import std
 pitches   { r, kick = 36, chh = 42, A2, C3, D3, E3, G3, C4, G4, A4, B4 }
-durations { s2 = 1/8, s4 = 1/4, s6 = 3/8, s8 = 1/2, s1 = 1/16, s3 = 3/16 }
+durations { c1 = 1/16, c3 = 3/16, c4 = 1/4, c5 = 5/16, c11 = 11/16, c15 = 15/16 }
 timbres   { drums = gm(0) on 10, bass = gm(33) on 2, guitar = gm(29) on 3,
             keys = gm(0) on 4, sax = gm(66) on 5 }
-play line(base "drums", drums)   [ kick s1, r s1, chh s1, r s1, kick s1, r s1, chh s1, r s1,
-                                   kick s1, r s1, chh s1, r s1, kick s1, r s1, chh s1, r s1 ]
-   | line(base "bass", bass)     [ A2 s4, C3 s4, D3 s6, E3 s2 ]
-   | line(base "guitar", guitar) [ G3 s8, r s8 ]
-   | line(base "keys", keys)     [ r s4, C4 s4, r s8 ]
-   | line(base "sax", sax)       [ G4 s2, A4 s2, B4 s4, r s8 ]
+play line(base "drums", drums)       [ kick c1, r c1, chh c1, r c1, kick c1, r c1, chh c1, r c1,
+                                     kick c1, r c1, chh c1, r c1, kick c1, r c1, chh c1, r c1 ]
+   | line(base "bass", bass)         [ A2 c1, r c3, C3 c1, r c3, D3 c1, r c5, E3 c1, r c1 ]
+   | line(base "guitar", guitar)     [ G3 c1, r c15 ]
+   | line(base "keys", keys)         [ r c4, C4 c1, r c11 ]
+   | line(base "sax", sax)           [ G4 c1, r c1, A4 c1, r c1, B4 c1, r c11 ]

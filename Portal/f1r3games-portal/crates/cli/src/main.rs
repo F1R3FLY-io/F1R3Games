@@ -18,6 +18,8 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
+mod beat;
+
 #[derive(Parser)]
 #[command(name = "f1r3games", about = "F1R3Games portal client")]
 struct Cli {
@@ -90,11 +92,41 @@ enum Cmd {
         #[arg(long, value_delimiter = ',')]
         only: Vec<String>,
     },
+    /// F1R3Beat's breeder (design §10): name it, run an epoch, verify one.
+    Beat {
+        #[command(subcommand)]
+        cmd: BeatCmd,
+    },
     /// Run any explore template: `read games.list`.
     Read {
         template: String,
         #[arg(long, default_value = "{}")]
         args: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum BeatCmd {
+    /// Name the breeder; sign with F1R3Beat's environment key active.
+    SetBreeder { address: String },
+    /// Run the next epoch with the breeder key active; children are published into `--nursery`.
+    Epoch {
+        #[arg(long)]
+        nursery: String,
+        /// Defaults to one after the last epoch.
+        #[arg(long)]
+        epoch: Option<i64>,
+        /// How far back to look for new patterns before the first epoch.
+        #[arg(long, default_value_t = 14)]
+        days: i64,
+        /// Compute and print the epoch without publishing or recording it.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Recompute a recorded epoch and compare.
+    Verify {
+        #[arg(long)]
+        epoch: i64,
     },
 }
 
@@ -520,6 +552,14 @@ async fn main() -> Result<()> {
                 let manifest = Value::from_typed_json(&entry["manifest"])?;
                 let (d, _) = ctx.call("games.register", [("manifest".to_string(), manifest)].into_iter().collect(), &[], Some(5_000_000)).await?;
                 println!("{id}: deploy {d}");
+            }
+        }
+        Cmd::Beat { cmd } => {
+            let mut ctx = open(&cli).await?;
+            match cmd {
+                BeatCmd::SetBreeder { address } => beat::set_breeder(&mut ctx, address).await?,
+                BeatCmd::Epoch { nursery, epoch, days, dry_run } => beat::epoch(&mut ctx, nursery, *epoch, *days, *dry_run).await?,
+                BeatCmd::Verify { epoch } => beat::verify(&ctx, *epoch).await?,
             }
         }
         Cmd::Read { template, args } => {

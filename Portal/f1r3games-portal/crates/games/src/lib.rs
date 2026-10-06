@@ -25,6 +25,7 @@ use f1r3games_core::{keyfile, registry, Value};
 use k256::ecdsa::SigningKey;
 use std::collections::BTreeMap;
 
+pub mod beat;
 pub mod pix;
 
 pub const PRELUDE: &str = include_str!("../../../templates/games/prelude.rho");
@@ -92,18 +93,32 @@ pub const GAMES: &[GameSpec] = &[
     GameSpec {
         id: "f1r3beat",
         name: "F1R3Beat",
-        tagline: "Grow rhythms together; the ones people love reproduce",
+        tagline: "One step each. Make a groove together.",
         platforms: &["web"],
-        galleries: &[Gallery { kind: "pattern", label: "Patterns" }],
+        galleries: &[Gallery { kind: "pattern", label: "Patterns" }, Gallery { kind: "session", label: "Sessions" }],
         contacts_dialogue: true,
         reader_tier: false,
         body: include_str!("../../../templates/games/f1r3beat.rho"),
+        // F1R3Beat design v2 §5.3–5.4 and §10: four moves, the breeder's two
+        // (signed only by the keys the environment names, never in an
+        // allowance), and seven reads.
         methods: &[
-            m("toggle", D, &["instance", "voice", "step", "on"], true),
-            m("tempo", D, &["instance", "bpm"], true),
-            m("state", E, &["instance"], false),
+            m("seat", D, &["instance", "pk", "want"], true),
+            m("set", D, &["instance", "note"], true),
+            m("listen", D, &["instance", "bpm"], true),
+            m("say", D, &["instance", "to", "envelope"], true),
+            m("setBreeder", D, &["address"], false),
+            m("epoch", D, &["epoch", "record"], false),
+            m("grid", E, &["instance"], false),
+            m("seats", E, &["instance"], false),
+            m("log", E, &["instance", "from", "to"], false),
+            m("mail", E, &["instance", "address", "cursor"], false),
+            m("outbox", E, &["instance", "address", "from"], false),
+            m("population", E, &["cursor"], false),
+            m("epochRecord", E, &["epoch"], false),
+            m("member", E, &["digest"], false),
         ],
-        capabilities: &[],
+        capabilities: &["pay", "open"],
     },
     GameSpec {
         id: "f1r3ink",
