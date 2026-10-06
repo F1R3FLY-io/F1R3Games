@@ -24,7 +24,9 @@ export function Play() {
     const f = frame.current;
     const send = async () => {
       const body = await portal.playBody(id).catch(() => null);
-      f.contentWindow?.postMessage({ f1r3games: 2, event: "preview", data: { header: play.data, body } }, new URL(renderer, location.href).origin);
+      // The renderer runs in an opaque-origin sandbox ("allow-scripts" only), so its origin is
+      // "null" and cannot be named as a target. The header and body are public chain data.
+      f.contentWindow?.postMessage({ f1r3games: 2, event: "preview", data: { header: play.data, body } }, "*");
     };
     f.addEventListener("load", send);
     return () => f.removeEventListener("load", send);

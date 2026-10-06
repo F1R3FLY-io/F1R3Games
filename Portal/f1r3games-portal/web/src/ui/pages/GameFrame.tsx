@@ -39,16 +39,28 @@ export function GameFrame() {
             </p>
           </section>
         ) : (
+          new URL(game.entry, location.href).origin === location.origin ? (
+            // allow-same-origin below is safe only because the game is on another origin.
+            <section className="panel narrow">
+              <h1>{game.name}</h1>
+              <p className="error">This game is served from the portal's own origin. The portal frames games only from their own origin.</p>
+            </section>
+          ) : (
           <>
+            {/* allow-same-origin keeps the game on its real origin, so the host protocol can check
+                event.origin and address its replies to it; without it the frame's origin is opaque
+                ("null") and every message is dropped. The game is on another origin than the portal,
+                so this grants it nothing over the portal. */}
             <iframe
               ref={frame}
               className="game"
               title={game.name}
-              sandbox="allow-scripts allow-forms allow-pointer-lock"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock"
               src={`${game.entry}${game.entry.includes("?") ? "&" : "?"}instance=${inst.id}&portal=${encodeURIComponent(location.origin)}`}
             />
             {inviting && <InviteDialog instance={inst.id} game={game} onClose={() => setInviting(false)} />}
           </>
+          )
         )
       }
     </Async>
