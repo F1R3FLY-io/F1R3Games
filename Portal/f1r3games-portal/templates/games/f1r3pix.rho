@@ -9,6 +9,8 @@
             //   ("hist", i, q, r) [[h, ts, colour], ...] oldest first
             //   ("out", i, a)     [{"seq", "to", "env", "at", "h"}, ...]
             // After seating, every cell, hist and out key has exactly one writer.
+            // Lists have no `contains` on F1R3Node-Rust: test membership with
+            // `.toSet().contains(x)`.
             new blockData(`rho:block:data`),
                 blake2b(`rho:crypto:blake2b256Hash`),
                 height, cfgOf, radiusFor, idxToCell, onBoard, abs, validColour, validPalette,
@@ -83,7 +85,7 @@
                         hexDigits!(s, 1, *dCh) |
                         for (@ok <- dCh) {
                           if (not ok) { ret!(false) }
-                          else { if (palette == Nil) { ret!(true) } else { ret!(palette.contains(s)) } }
+                          else { if (palette == Nil) { ret!(true) } else { ret!(palette.toSet().contains(s)) } }
                         }
                       }
                     } }
@@ -459,7 +461,7 @@
                 match outbox {
                   [] => { ret!(acc) }
                   [m ...rest] => {
-                    if (seq > after and m.get("to").contains(address)) {
+                    if (seq > after and m.get("to").toSet().contains(address)) {
                       filterMail!(sender, rest, address, after, seq + 1, acc ++ [m.set("from", sender).set("seq", seq)], *ret)
                     } else { filterMail!(sender, rest, address, after, seq + 1, acc, *ret) }
                   }
