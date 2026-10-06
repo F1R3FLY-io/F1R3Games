@@ -1,0 +1,34 @@
+validator_url = "http://127.0.0.1:40413"
+observer_url  = "http://127.0.0.1:40453"
+shard_id      = "root"
+phlo_price    = 1
+coop_address = "1111sQDawGqQKzEQQ1zNKyqxDKBmzDiZTWURnPh2Ah3F2DdftKdNE"
+#coop_address  = "<the Cooperative's F1R3Cap address>"
+service_key_file  = "service-key.json"
+env_key_file      = "env-key.json"
+token_secret_file = "token-secret.hex"
+static_dir        = "../web/dist"
+portal_base_url = "http://127.0.0.1:8640"
+
+#listen = "127.0.0.1:8640"
+#shard_id = "root"
+#validator_url = "http://127.0.0.1:40413"   # validator 1 in ign1t10n's port plan
+#observer_url = "http://127.0.0.1:40453"    # the read-only observer
+#service_key_file = "service-key.json"
+#env_key_file = "env-key.json"
+#token_secret_file = "token-secret.hex"
+#coop_address = "1111PXDQTDEd4XNuX4YWoB6XeL7ssWvhePGD2XmkENkG5sHfAMW9Q"  # replace with the Cooperative's address
+#env_version = 1
+#phlo_price = 1
+#default_phlo_limit = 500000
+#max_phlo_limit = 50000000
+#env_phlo_limit = 50000000
+#deploy_ttl_ms = 600000
+#token_ttl_secs = 3600
+#bootstrap_env = true
+#cors_origins = ["http://localhost:5173"]
+#portal_base_url = "http://localhost:5173"
+
+[faucet]
+enabled = true
+amount = 100000000

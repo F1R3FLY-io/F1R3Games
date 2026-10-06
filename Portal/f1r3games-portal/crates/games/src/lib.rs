@@ -180,7 +180,7 @@ impl GameSpec {
         Template::new(
             self.template_id(m.name),
             m.kind,
-            format!("new {binder}, rl(`rho:registry:lookup`), envCh in {{\n  rl!({uri}, *envCh) |\n  for (@(_, env) <- envCh) {{\n    @env!({args}, *{ret})\n  }}\n}}\n"),
+     	    format!("new {binder}, rl(`rho:registry:lookup`), envCh in {{ rl!({uri}, *envCh) | for (@(_, env) <- envCh) {{ @env!({args}, *{ret}) }} }}"),
         )
     }
 

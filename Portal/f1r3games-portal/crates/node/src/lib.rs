@@ -74,12 +74,20 @@ impl Node {
         j.get("seqNumber").and_then(Json::as_i64).ok_or_else(|| NodeError::Shape(j.to_string()))
     }
 
-    /// Submit a signed deploy; returns the deploy id.
+    /// Submit a signed deploy; returns the deploy id (the signature, hex).
+    /// The node answers `Success!\nDeployId is: <hex>`; the id is the
+    /// signature we sent, so we return that and check the node echoed it.
     pub async fn deploy(&self, d: &SignedDeploy) -> Result<String, NodeError> {
         let j = check(self.http.post(format!("{}/api/deploy", self.validator)).json(&d.to_json()).send().await?).await?;
-        match j {
-            Json::String(s) => Ok(s),
-            other => Ok(other.get("deployId").and_then(Json::as_str).map(str::to_string).unwrap_or_else(|| other.to_string())),
+        let text = match &j {
+            Json::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        let id = d.id();
+        if text.contains(&id) {
+            Ok(id)
+        } else {
+            Err(NodeError::Shape(format!("unexpected deploy response: {text}")))
         }
     }
 
