@@ -1,0 +1,12 @@
+score F1R3Beat
+import std
+pitches   { r, kick = 36, chh = 42, A2, C3, D3, E3, G3, C4, G4, A4, B4 }
+durations { s2 = 1/8, s4 = 1/4, s6 = 3/8, s8 = 1/2, s1 = 1/16, s3 = 3/16 }
+timbres   { drums = gm(0) on 10, bass = gm(33) on 2, guitar = gm(29) on 3,
+            keys = gm(0) on 4, sax = gm(66) on 5 }
+play line(base "drums", drums)   [ kick s1, r s1, chh s1, r s1, kick s1, r s1, chh s1, r s1,
+                                   kick s1, r s1, chh s1, r s1, kick s1, r s1, chh s1, r s1 ]
+   | line(base "bass", bass)     [ A2 s4, C3 s4, D3 s6, E3 s2 ]
+   | line(base "guitar", guitar) [ G3 s8, r s8 ]
+   | line(base "keys", keys)     [ r s4, C4 s4, r s8 ]
+   | line(base "sax", sax)       [ G4 s2, A4 s2, B4 s4, r s8 ]

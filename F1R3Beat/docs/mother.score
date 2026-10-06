@@ -1,0 +1,14 @@
+// F1R3Beat pattern, canonical form v2 · meter 4/4 · bars 1 · column 1/16 · columns 16
+score F1R3Beat
+import std
+pitches   { r, kick = 36, snare = 38, chh = 42, ohh = 46, E2, G2, A2, D3, E3, D4, E4 }
+durations { c1 = 1/16, c2 = 1/8, c3 = 3/16, c4 = 1/4, c7 = 7/16, c16 = 1 }
+timbres   { drums = gm(0) on 10, bass = gm(33) on 2, guitar = gm(29) on 3,
+            keys = gm(0) on 4, sax = gm(66) on 5 }
+play line(base "drums", drums)       [ kick c1, r c1, chh c1, r c1, snare c1, r c1, chh c1, r c1,
+                                     kick c1, r c1, kick c1, r c1, snare c1, r c1, ohh c1, r c1 ]
+   | line(base "bass", bass)         [ E2 c1, r c2, E2 c1, r c2, G2 c1, r c1, A2 c1, r c2,
+                                     A2 c1, r c4 ]
+   | line(base "guitar", guitar)     [ r c4, E3 c1, r c7, D3 c1, r c3 ]
+   | line(base "keys", keys)         [ r c16 ]
+   | line(base "sax", sax)           [ r c4, D4 c1, r c3, E4 c1, r c7 ]
