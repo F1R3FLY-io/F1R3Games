@@ -1,0 +1,21 @@
+[package]
+name = "f1r3games-cli"
+description = "A command-line client of the F1R3Games portal, using the F1R3Games wallet: keys, profiles, launching instances, invitations, sponsorships, contacts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "f1r3games"
+path = "src/main.rs"
+
+[dependencies]
+f1r3games-core.workspace = true
+f1r3games-games.workspace = true
+f1r3games-wallet.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+anyhow.workspace = true
+clap.workspace = true

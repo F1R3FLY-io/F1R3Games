@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/wallet",
+    "crates/node",
+    "crates/service",
+    "crates/cli",
+    "crates/games",
+    "crates/rholint",
+]
+# rholint links the node's own Rholang parser, which needs RUSTC_BOOTSTRAP=1 on
+# a stable toolchain; it is excluded from plain `cargo build`/`cargo test`.
+default-members = [
+    "crates/core",
+    "crates/wallet",
+    "crates/node",
+    "crates/service",
+    "crates/cli",
+    "crates/games",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["F1R3FLY.io"]
+repository = "https://github.com/F1R3FLY-io/F1R3Games"
+rust-version = "1.85"
+
+[workspace.dependencies]
+f1r3games-core = { path = "crates/core" }
+f1r3games-wallet = { path = "crates/wallet" }
+f1r3games-node = { path = "crates/node" }
+f1r3games-games = { path = "crates/games" }
+anyhow = "1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+base64 = "0.22"
+bs58 = "0.5"
+k256 = { version = "0.13", features = ["ecdsa", "std"] }
+blake2 = "0.10"
+sha2 = "0.10"
+sha3 = "0.10"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+hkdf = "0.12"
+aes-gcm = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+getrandom = "0.2"
+zbase32 = "0.1"
+zeroize = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "time", "sync", "signal"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+toml = "0.8"
+clap = { version = "4", features = ["derive", "env"] }

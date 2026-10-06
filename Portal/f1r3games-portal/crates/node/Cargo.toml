@@ -1,0 +1,14 @@
+[package]
+name = "f1r3games-node"
+description = "HTTP client for F1R3Node-Rust: deploys to validators, reads at observers, as docs/node/api-reference.md specifies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+f1r3games-core.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

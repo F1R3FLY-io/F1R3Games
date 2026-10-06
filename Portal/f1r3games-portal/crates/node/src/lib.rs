@@ -1,0 +1,133 @@
+//! A client for F1R3Node-Rust's public HTTP API (port 40403 by default).
+//!
+//! Deploys go to a validator (`POST /api/deploy`); exploratory reads,
+//! cost estimates and balances go to a read-only node, which is the only
+//! kind that serves them (`400 readonly_node_required` otherwise). Nothing
+//! here proposes: validators propose by heartbeat.
+
+use f1r3games_core::{SignedDeploy, Value};
+use serde_json::{json, Value as Json};
+
+#[derive(Debug, thiserror::Error)]
+pub enum NodeError {
+    #[error("node request failed: {0}")]
+    Transport(#[from] reqwest::Error),
+    #[error("node answered {status} {code}: {message}")]
+    Api { status: u16, code: String, message: String },
+    #[error("unexpected node response: {0}")]
+    Shape(String),
+}
+
+#[derive(Clone, Debug)]
+pub struct Node {
+    http: reqwest::Client,
+    pub validator: String,
+    pub observer: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct Explored {
+    pub values: Vec<Value>,
+    pub block_hash: String,
+    pub block_number: Option<i64>,
+}
+
+impl Explored {
+    /// The first value sent on the return channel.
+    pub fn first(&self) -> Value {
+        self.values.first().cloned().unwrap_or(Value::Nil)
+    }
+}
+
+async fn check(resp: reqwest::Response) -> Result<Json, NodeError> {
+    let status = resp.status();
+    let text = resp.text().await?;
+    let body: Json = serde_json::from_str(&text).unwrap_or(Json::String(text));
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(NodeError::Api {
+            status: status.as_u16(),
+            code: body.get("error").and_then(Json::as_str).unwrap_or("").to_string(),
+            message: body.get("message").and_then(Json::as_str).map(str::to_string).unwrap_or_else(|| body.to_string()),
+        })
+    }
+}
+
+impl Node {
+    pub fn new(validator: impl Into<String>, observer: impl Into<String>) -> Node {
+        Node {
+            http: reqwest::Client::new(),
+            validator: validator.into().trim_end_matches('/').to_string(),
+            observer: observer.into().trim_end_matches('/').to_string(),
+        }
+    }
+
+    pub async fn status(&self, base: &str) -> Result<Json, NodeError> {
+        check(self.http.get(format!("{base}/api/status")).send().await?).await
+    }
+
+    /// The validator's next sequence number, for `validAfterBlockNumber`
+    /// (`GET /api/prepare-deploy`).
+    pub async fn valid_after(&self) -> Result<i64, NodeError> {
+        let j = check(self.http.get(format!("{}/api/prepare-deploy", self.validator)).send().await?).await?;
+        j.get("seqNumber").and_then(Json::as_i64).ok_or_else(|| NodeError::Shape(j.to_string()))
+    }
+
+    /// Submit a signed deploy; returns the deploy id (the signature, hex).
+    /// The node answers `Success!\nDeployId is: <hex>`; the id is the
+    /// signature we sent, so we return that and check the node echoed it.
+    pub async fn deploy(&self, d: &SignedDeploy) -> Result<String, NodeError> {
+        let j = check(self.http.post(format!("{}/api/deploy", self.validator)).json(&d.to_json()).send().await?).await?;
+        let text = match &j {
+            Json::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        let id = d.id();
+        if text.contains(&id) {
+            Ok(id)
+        } else {
+            Err(NodeError::Shape(format!("unexpected deploy response: {text}")))
+        }
+    }
+
+    /// `GET /api/deploy/{id}`: `None` while the deploy is not yet in a block.
+    pub async fn find_deploy(&self, id: &str) -> Result<Option<Json>, NodeError> {
+        let r = self.http.get(format!("{}/api/deploy/{id}", self.validator)).send().await?;
+        if r.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        check(r).await.map(Some)
+    }
+
+    /// Run a term read-only against the last finalized block at the observer.
+    pub async fn explore(&self, term: &str) -> Result<Explored, NodeError> {
+        let j = check(self.http.post(format!("{}/api/explore-deploy", self.observer)).json(&json!({ "term": term })).send().await?).await?;
+        let exprs = j.get("expr").and_then(Json::as_array).ok_or_else(|| NodeError::Shape(j.to_string()))?;
+        let values = exprs.iter().map(Value::from_rho_expr).collect::<Result<Vec<_>, _>>().map_err(|e| NodeError::Shape(e.to_string()))?;
+        let block = j.get("block").cloned().unwrap_or(Json::Null);
+        Ok(Explored {
+            values,
+            block_hash: block.get("blockHash").and_then(Json::as_str).unwrap_or("").to_string(),
+            block_number: block.get("blockNumber").and_then(Json::as_i64),
+        })
+    }
+
+    /// `POST /api/estimate-cost` with the deployer key, so identity-dependent
+    /// terms are quoted correctly.
+    pub async fn estimate_cost(&self, term: &str, deployer_hex: &str) -> Result<u64, NodeError> {
+        let j = check(
+            self.http
+                .post(format!("{}/api/estimate-cost", self.observer))
+                .json(&json!({ "term": term, "deployer": deployer_hex }))
+                .send()
+                .await?,
+        )
+        .await?;
+        j.get("cost").and_then(Json::as_u64).ok_or_else(|| NodeError::Shape(j.to_string()))
+    }
+
+    pub async fn balance(&self, address: &str) -> Result<Json, NodeError> {
+        check(self.http.get(format!("{}/api/balance/{address}", self.observer)).send().await?).await
+    }
+}

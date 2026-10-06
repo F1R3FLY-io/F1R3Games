@@ -1,0 +1,28 @@
+[package]
+name = "f1r3games-wallet"
+description = "The F1R3Games wallet: an encrypted keystore unlocked by passphrase or passkey, a signing policy that signs only what it can read, per-instance allowances, invitations, and an encrypted contact book kept on the client or backed up on chain"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+f1r3games-core.workspace = true
+k256 = { workspace = true, features = ["ecdh"] }
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+base64.workspace = true
+thiserror.workspace = true
+aes-gcm.workspace = true
+pbkdf2.workspace = true
+hkdf.workspace = true
+getrandom.workspace = true
+sha2.workspace = true
+zeroize.workspace = true
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+wasm = ["dep:wasm-bindgen", "f1r3games-core/wasm"]

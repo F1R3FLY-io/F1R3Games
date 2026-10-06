@@ -1,0 +1,73 @@
+            // F1R3Ink: players describe themselves with tags and ink one another
+            // with colours. Inks received are kept under (instance, "inks",
+            // target), tags under (instance, "tags", player).
+
+            contract env(@"tags", @instance, @tags, ret) = {
+              new whoCh, mCh, ack in {
+                who!(*whoCh) |
+                for (@by, _ <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  for (@isIn <- mCh) {
+                    if (not isIn) { ret!((false, "join the instance first")) }
+                    else { if (tags.length() > 12) { ret!((false, "at most 12 tags")) }
+                    else {
+                      TreeHashMap!("set", state, (instance, "tags", by), tags, *ack) |
+                      for (_ <- ack) { ret!((true, tags)) }
+                    } }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"ink", @instance, @target, @colour, ret) = {
+              new whoCh, mCh, tCh, lCh, ack in {
+                who!(*whoCh) |
+                for (@from, @ts <- whoCh) {
+                  member!(instance, from, *mCh) |
+                  member!(instance, target, *tCh) |
+                  for (@fromIn <- mCh & @targetIn <- tCh) {
+                    if (not fromIn) { ret!((false, "join the instance first")) }
+                    else { if (not targetIn) { ret!((false, "you can only ink players in this instance")) }
+                    else { if (from == target) { ret!((false, "you cannot ink yourself")) }
+                    else { if (colour.length() != 7 or colour.slice(0, 1) != "#") { ret!((false, "colour must be #RRGGBB")) }
+                    else {
+                      TreeHashMap!("get", state, (instance, "inks", target), *lCh) |
+                      for (@inks <- lCh) {
+                        match inks {
+                          Nil => { TreeHashMap!("set", state, (instance, "inks", target), [{"from": from, "colour": colour, "at": ts}], *ack) }
+                          _ => { TreeHashMap!("set", state, (instance, "inks", target), inks ++ [{"from": from, "colour": colour, "at": ts}], *ack) }
+                        } |
+                        for (_ <- ack) { ret!((true, target)) }
+                      }
+                    } } } }
+                  }
+                }
+              }
+            } |
+
+            // Per player: their tags and the inks they have received.
+            contract env(@"state", @instance, ret) = {
+              new pCh, collect in {
+                participants!(instance, *pCh) |
+                for (@players <- pCh) {
+                  contract collect(@ps, @acc, done) = {
+                    match ps {
+                      [] => { done!(acc) }
+                      [p ...rest] => {
+                        new tCh, iCh in {
+                          TreeHashMap!("get", state, (instance, "tags", p), *tCh) |
+                          TreeHashMap!("get", state, (instance, "inks", p), *iCh) |
+                          for (@tags <- tCh & @inks <- iCh) {
+                            collect!(rest, acc.set(p, {"tags": tags, "inks": inks}), *done)
+                          }
+                        }
+                      }
+                    }
+                  } |
+                  new dCh in {
+                    collect!(players, {}, *dCh) |
+                    for (@all <- dCh) { ret!((true, all)) }
+                  }
+                }
+              }
+            }

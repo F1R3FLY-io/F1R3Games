@@ -1,0 +1,19 @@
+{
+  "name": "@f1r3fly/f1r3ink-shard",
+  "version": "0.1.0",
+  "description": "F1R3Ink shard integration — rholang contracts and gRPC client",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@tgrospic/rnode-grpc-js": "^0.10.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "license": "Apache-2.0",
+  "author": "F1R3FLY.IO"
+}

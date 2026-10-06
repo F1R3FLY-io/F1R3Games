@@ -1,0 +1,9 @@
+new ret, rl(`rho:registry:lookup`), envCh in {
+  rl!({{env_uri}}, *envCh) |
+  for (@entry <- envCh) {
+    match entry {
+      (version, _) => { ret!(version) }
+      _ => { ret!(Nil) }
+    }
+  }
+}

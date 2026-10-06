@@ -1,0 +1,621 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage[expansion=false]{microtype}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{codebg}{HTML}{F5F5F5}
+\definecolor{warnbg}{HTML}{FFF4E5}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  framesep=4pt,
+  rulecolor=\color{black!20},
+  breaklines=true,
+  columns=fullflexible,
+  keepspaces=true,
+  showstringspaces=false,
+  xleftmargin=0pt,
+  aboveskip=1em,
+  belowskip=1em
+}
+
+\newcommand{\MUST}{\textsc{must}}
+\newcommand{\MUSTNOT}{\textsc{must not}}
+\newcommand{\SHOULD}{\textsc{should}}
+\newcommand{\SHOULDNOT}{\textsc{should not}}
+\newcommand{\MAY}{\textsc{may}}
+
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}
+\theoremstyle{remark}
+\newtheorem*{decision}{Decision required}
+
+\title{\textbf{The F1R3Skein Virtual Instrument}\\[0.3em]
+\large Specification, revision 2}
+\author{F1R3FLY.io}
+\date{4 September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This document specifies the F1R3Skein virtual instrument: the gestural surface through which a
+player draws melody out of the digit streams of mathematical constants, and out of which the
+platform's two primary artifacts---tunes and performances---are produced. It supersedes the
+behaviour described in the existing \texttt{LeapSpigotVision} README, which is inaccurate in
+several respects, and it is written to be checked rather than admired: conformance language is
+normative, every threshold is named and externalised, and the wire protocol is given in full.
+
+Revision 2 makes four substantive changes to what is currently implemented. The transport moves off
+the Unix domain socket, which cannot cross a device boundary. Audio moves onto the headset. The
+gesture vocabulary gains explicit mutual exclusion and a calibration profile. And the semantics of
+the snip gesture are corrected: as implemented, \textbf{a snipped tune is not the tune the player
+heard}, and Section~\ref{sec:snip} sets out why, together with the resolution proposed for
+adoption.
+
+Section~\ref{sec:decisions} lists the seven points on which agreement is sought before
+implementation begins.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope and conformance}
+
+\subsection{Scope}
+
+In scope: the generative core, the instrument's state model, the gesture vocabulary and its
+detection criteria, the client/engine wire protocol, the visual and audio models, the recording of
+performances, and the non-functional budgets that make the instrument playable.
+
+Out of scope, and specified elsewhere: identity and sign-on, the galleries, the engagement ledger,
+breeding and selection, and the on-chain representation of tunes. This document defines what the
+instrument \emph{produces}; the development plan defines what becomes of it.
+
+\subsection{Conformance language}
+
+\MUST, \MUSTNOT, \SHOULD, \SHOULDNOT{} and \MAY{} are used in the sense of RFC 2119. A requirement
+labelled \MUST{} is a conformance condition for the September test build.
+
+\subsection{Terminology}
+
+\begin{description}[leftmargin=2.2cm,style=nextline,font=\normalfont\itshape]
+\item[Engine] The Rust process (or on-device library) holding the authoritative instrument state.
+\item[Client] The visionOS application: gesture recognition, rendering, and audio.
+\item[Stream] One spigot: a constant, an output base, and a cursor position.
+\item[Skein] The pair of streams, with a designation of which governs pitch and which duration.
+\item[Ribbon] The visual presentation of one stream: a receding row of coloured digit patches.
+\item[Tune] A snipped, named artifact. The unit of storage, breeding and gallery display.
+\item[Performance] The recorded trace of a session at the instrument.
+\end{description}
+
+\section{Deployment configurations}
+
+Two configurations are specified. Both \MUST{} be supported by the same engine code and the same
+protocol; they differ only in transport and in where the engine runs.
+
+\begin{description}[leftmargin=1cm,style=nextline]
+\item[\textbf{S1 --- Tethered.}] Engine on a Mac, client on the headset, connected over TCP on the
+local network with Bonjour discovery. This is the September test configuration. It is the fast path
+and it is explicitly a stopgap.
+\item[\textbf{S2 --- On-device.}] Engine compiled for \texttt{arm64-apple-visionos} as a static
+library and called through a C foreign-function interface. No transport, no network, no discovery.
+This is the target configuration.
+\end{description}
+
+The protocol of Section~\ref{sec:protocol} is defined over an abstract bidirectional message
+channel. In S1 that channel is a TCP stream; in S2 it is a pair of FFI ring buffers. \textbf{No
+other part of this specification distinguishes the two}, and the client \MUSTNOT{} contain
+transport-specific logic outside its channel implementation.
+
+The existing Unix-domain-socket transport \MUSTNOT{} be used for device testing. A Unix socket is
+addressed by a path in one host's filesystem; the headset is a different host. It \MAY{} be
+retained for engine development on the Mac.
+
+\section{The generative core}
+
+\subsection{Streams}
+
+The engine \MUST{} provide the five constants already implemented---$\pi$, $e$, $\varphi$, $\ln 2$,
+and Liouville's constant---each emitting digits in a configurable output base $b$ with
+$2 \le b \le 36$. Digit emission \MUST{} be exact and unbounded: no fixed-precision truncation, and
+no upper limit on cursor position other than time and memory.
+
+\begin{definition}[Stream configuration]
+A stream configuration is a pair $(c, b)$ of a constant and a base. Together with a cursor position
+$p \in \mathbb{N}$ it determines the digit $d(c, b, p)$ uniquely.
+\end{definition}
+
+The $\pi$ implementation currently uses Gosper's unbounded linear-fractional-transformation spigot
+with arbitrary-precision integers, and is materially slower than the other four. Since deep cursor
+positions are exactly what a long session produces, the engine \SHOULD{} adopt a
+Bailey--Borwein--Plouffe extraction for $\pi$ in bases where it applies, and \MUST{} in any case
+memoise emitted digits so that re-realisation of an already-visited range is $O(1)$ per digit.
+
+\subsection{The skein and its two cursors}
+
+The skein holds two configurations and two \emph{independent} cursor positions, $p_L$ and $p_R$.
+Independence is the whole point of the two-handed design: the left hand advances one stream, the
+right hand the other, and the player's control over the music is precisely their control over the
+relative rate of the two.
+
+\begin{quote}
+\textbf{Consequence, and it is load-bearing:} at any moment $p_L$ and $p_R$ are in general
+\emph{different}, and the difference is the player's doing. Any operation that assumes a single
+shared position is wrong. Section~\ref{sec:snip} is about the one place this assumption was made.
+\end{quote}
+
+\subsection{Note mapping}
+
+By convention one stream governs pitch and the other duration; \emph{twist} exchanges the roles.
+The engine \MUST{} produce, for the $k$-th zipped pair, a note
+\[
+\big(\,\text{pitch} = \Pi(d_{\text{pitch}}),\quad
+      \text{duration} = \Delta(d_{\text{duration}})\,\big)
+\]
+where $\Pi$ is a pitch map and $\Delta$ a duration map. Both \MUST{} be parameters of the session,
+not constants of the build. Pitch maps \MUST{} include at minimum major, minor, pentatonic major,
+pentatonic minor, Dorian, whole tone and chromatic, each over a configurable root. Duration maps
+\MUST{} include musical, linear, exponential and fixed.
+
+The base of a stream \SHOULD{} be chosen to match the cardinality of the map it drives: a
+22-element pitch vocabulary is naturally driven by a base-22 stream, a 5-element rhythmic vocabulary
+by a base-5 stream. Mismatches are permitted and produce a modular fold, which is musically
+legitimate but should be a choice rather than an accident.
+
+\begin{decision}
+\textbf{D-1.} Whether $\Pi$ and $\Delta$ are fixed for the duration of a performance, or are
+themselves gesture-modulable mid-performance (``change scale with a gesture''). The latter is
+musically far richer and is a natural extension of the vocabulary, but it adds state that the tune
+representation must then carry. See Section~\ref{sec:decisions}.
+\end{decision}
+
+\section{Instrument state}
+
+\subsection{State vector}
+
+The engine's authoritative state \MUST{} be exactly:
+\[
+\Sigma = \big\langle\;
+(c_L, b_L, p_L),\;
+(c_R, b_R, p_R),\;
+\rho,\;
+\Pi,\; \Delta,\; \tau,\; \iota,\;
+T
+\;\big\rangle
+\]
+with $\rho \in \{\textsf{Stopped}, \textsf{Playing}\}$ the playback state, $\tau$ the tempo,
+$\iota$ the instrument (General MIDI program), and $T$ the tune tray. The client \MUSTNOT{} hold
+authoritative state; it renders $\Sigma$ and emits gestures.
+
+\subsection{Playback state machine}
+
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+\textbf{State} & \textbf{Event} & \textbf{Next} & \textbf{Effect} \\
+\midrule
+\textsf{Stopped} & \textsf{Clap}   & \textsf{Playing} & begin realisation; ribbons stitch \\
+\textsf{Stopped} & \textsf{Unclap} & \textsf{Stopped} & ignored \\
+\textsf{Playing} & \textsf{Unclap} & \textsf{Stopped} & halt realisation; ribbons separate \\
+\textsf{Playing} & \textsf{Clap}   & \textsf{Playing} & ignored \\
+any & \textsf{Pull}, \textsf{Twist}, \textsf{Scissors} & unchanged & see \S\ref{sec:gestures} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Pulling \MUST{} be permitted while playing; that is how a player steers a phrase as it sounds.
+
+\section{Gesture vocabulary}
+\label{sec:gestures}
+
+\subsection{The six gestures}
+
+\begin{center}
+\begin{tabular}{p{2.3cm} p{5.2cm} p{6.4cm}}
+\toprule
+\textbf{Gesture} & \textbf{Physical form} & \textbf{Effect} \\
+\midrule
+Pull left  & Left hand drawn toward the player & Advance the left stream; step count proportional to speed \\
+Pull right & Right hand drawn toward the player & Advance the right stream, likewise \\
+Twist      & One hand held clearly above the other, hands apart & Exchange the two streams, cursors included \\
+Clap       & Hands brought together & Enter \textsf{Playing} \\
+Unclap     & Hands drawn apart from a clap & Enter \textsf{Stopped} \\
+Scissors   & Index and middle extended and spread, ring and little curled & Snip the current window into a named tune \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Mutual exclusion}
+
+The current implementation evaluates clap and twist independently, so hands brought together with
+one slightly higher---an entirely natural motion---fires both. The following rules \MUST{} hold:
+
+\begin{enumerate}[leftmargin=*]
+\item Twist \MUST{} require hand separation greater than the unclap distance. Twist and clap are
+      therefore never simultaneously satisfiable.
+\item Scissors \MUST{} be suppressed while the hands are within clap distance of one another.
+\item Pull \MUST{} be suppressed for a hand that is participating in a clap transition in the same
+      frame.
+\item Every gesture \MUST{} be edge-triggered with a cooldown, and \MUSTNOT{} re-fire while its
+      pose is continuously held.
+\end{enumerate}
+
+\subsection{Detection parameters}
+
+Every threshold \MUST{} live in an external calibration profile, loaded at launch and reloadable
+without a rebuild. Hardcoded constants in \texttt{GestureRecognizer.swift} \MUSTNOT{} remain.
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Parameter} & \textbf{Governs} & \textbf{Provisional} \\
+\midrule
+\texttt{clap.distance}        & hands-together threshold      & 0.10 m \\
+\texttt{unclap.distance}      & hands-apart threshold         & 0.22 m \\
+\texttt{pull.velocity\_min}   & minimum speed toward player   & 0.25 m/s \\
+\texttt{pull.step\_divisor}   & speed to step count           & 0.15 \\
+\texttt{pull.cooldown}        & minimum interval              & 0.08 s \\
+\texttt{twist.height\_delta}  & vertical offset               & 0.06 m \\
+\texttt{twist.hold\_frames}   & frames before firing          & 8 \\
+\texttt{scissors.spread}      & index/middle angle            & 0.40 rad \\
+\texttt{scissors.extended}    & extension floor, index/middle & \emph{to be derived} \\
+\texttt{scissors.curled}      & curl ceiling, ring/little     & \emph{to be derived} \\
+\texttt{scissors.hold\_frames}& frames before firing          & 5 \\
+\texttt{scissors.cooldown}    & minimum interval              & 0.60 s \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Finger curl must be scale-invariant}
+
+The implemented curl metric is $\lVert \text{tip} - \text{metacarpal} \rVert / 0.08$, clamped to
+unity, with ``curled'' asserted below $0.30$. On an adult hand a fully curled ring finger measures
+roughly $0.06$--$0.08$ m tip-to-metacarpal, giving $0.75$--$1.0$. The threshold is unreachable, and
+scissors consequently never fires from hand tracking. The metric is also not scale-invariant: the
+fixed $0.08$ m divisor makes detection depend on hand size.
+
+Curl \MUST{} instead be measured either as the interior angle at the proximal interphalangeal
+joint, or as tip-to-wrist distance normalised by that finger's own summed segment lengths. Both are
+scale-invariant. Thresholds \MUST{} be derived from recorded traces (\S\ref{sec:instrumentation}),
+not chosen by inspection.
+
+\section{Snip semantics}
+\label{sec:snip}
+
+\subsection{The defect}
+
+This is the most important paragraph in the document.
+
+The engine derives a snip as follows. \texttt{do\_snip} computes
+$\textit{from} = p_L - w$ and $\textit{to} = p_L$, where $w$ is the ribbon width, and then calls
+\texttt{DualStream::snip(name, from, to)}. That function creates fresh spigots from each side's
+configuration, advances \emph{both} to \textit{from}, and collects $\textit{to}-\textit{from}$
+pairs.
+
+Both sides are advanced to a position computed \emph{from the left cursor alone}. But $p_L$ and
+$p_R$ are independent by design---the player has been moving them at different rates all session.
+So the stored snippet is the sequence
+\[
+\big(\, d(c_L, b_L, k),\ d(c_R, b_R, k) \,\big)_{k \,\in\, [p_L - w,\; p_L)}
+\]
+whereas what the player heard and saw was
+\[
+\big(\, d(c_L, b_L, i),\ d(c_R, b_R, j) \,\big)
+\]
+with $i$ and $j$ advancing independently. These coincide only if the two cursors happen to have
+moved in lockstep, which is precisely the case the instrument exists to avoid.
+
+\begin{quote}\itshape
+A snipped tune is, in general, not the tune the player heard. It is a different tune, derived from
+the same two constants.
+\end{quote}
+
+There is a third representation in play, which compounds the problem. The tray receives the
+digits actually \emph{displayed}---\texttt{left\_ribbon.patches} zipped with
+\texttt{right\_ribbon.patches}---while the snippet map receives the re-derived pairs above. So
+``the snipped tune'' currently denotes three different things depending on where one looks: what
+was heard, what is in the tray, and what is in the snippet map.
+
+\subsection{Resolution}
+
+Three resolutions are available.
+
+\paragraph{(a) Zip-index snip.} Maintain a log of realised pairs and snip an interval of that log.
+Exactly faithful to what was heard. Costs a growing log, and---decisively---destroys the address
+property: a tune is no longer reconstructible from a handful of numbers, because the pairing is
+arbitrary.
+
+\paragraph{(b) Independent intervals.} \emph{Recommended.} A snip records both cursor positions and
+a common length:
+\[
+\textsf{Snip}(k,\; i_L,\; i_R,\; n)
+\quad\text{denoting}\quad
+\big(\, d(c_L, b_L, i_L + t),\ d(c_R, b_R, i_R + t) \,\big)_{t \in [0, n)}.
+\]
+Since both ribbons are fed by the same advance operations that drive realisation, the window
+$[p_L - n, p_L) \times [p_R - n, p_R)$ contains exactly the pairs displayed and sounded. Faithful,
+and the address property survives: four numbers and two configurations.
+
+\paragraph{(c) Lockstep.} Forbid independent advancement. Correct by construction and rejected: it
+deletes the two-handed idea that the instrument is for.
+
+\subsection{Consequences of (b)}
+
+Adopting (b) requires three changes beyond the engine.
+
+The tray, the snippet map and the realised audio \MUST{} all be derived from the same
+$\textsf{Snip}(k, i_L, i_R, n)$, eliminating the three-way divergence.
+
+The Theory of skeins requires amendment. \texttt{Skein.module} currently declares
+\begin{lstlisting}
+Snip . k:Skein, i:Nat, j:Nat |- "snip" "(" k "," i "," j ")" : Tune;
+\end{lstlisting}
+which inherits the single-interval assumption. It becomes
+\begin{lstlisting}
+Snip . k:Skein, iL:Nat, iR:Nat, n:Nat
+     |- "snip" "(" k "," iL "," iR "," n ")" : Tune;
+\end{lstlisting}
+with the empty-snip equation restated as $(\textsf{Snip}\ k\ i_L\ i_R\ \textsf{NZero}) ==
+(\textsf{Rest})$.
+
+Twist then interacts correctly and for free:
+
+\begin{proposition}
+Under (b), snipping commutes with twisting: normalising $\textsf{Twist}(\textsf{Wv}\ l\ r)$ to
+$\textsf{Wv}\ r\ l$ also reinterprets $i_L$ as indexing $r$, which is exactly what the engine does,
+since \texttt{twist} swaps whole spigots---configuration and cursor together. No additional
+equation is needed.
+\end{proposition}
+
+\begin{decision}
+\textbf{D-2.} Adopt resolution (b). Confirm, and confirm the amendment to \texttt{Skein.module}.
+\end{decision}
+
+\subsection{Naming}
+
+A scissors gesture \MUST{} suspend nothing: realisation continues, cursors keep their positions, and
+the player is prompted for a name asynchronously. If no name is supplied within a timeout the
+engine \MUST{} assign a provisional one rather than discard the snip. Losing a capture because a
+text field was dismissed is the worst available outcome.
+
+\section{Performance recording}
+
+\begin{definition}[Performance trace]
+An ordered sequence of timestamped records: an opening declaration of both stream configurations,
+the pitch and duration maps, tempo and instrument; followed by every gesture event with its
+parameters; followed by a closing timestamp.
+\end{definition}
+
+The engine \MUST{} record a trace for every session, without the player asking. Because the streams
+are deterministic and the state machine is total, the trace \MUST{} replay the session exactly; no
+audio is stored. Snips occurring during a session \MUST{} appear in the trace, so that a performance
+resolves to the tunes harvested from it and each tune resolves back to its performance.
+
+Trace records \MUST{} carry monotonic timestamps at millisecond resolution or better, and \SHOULD{}
+additionally carry the raw hand-tracking metrics that produced each gesture, for the purpose of
+\S\ref{sec:instrumentation}.
+
+\section{Wire protocol, version 2}
+\label{sec:protocol}
+
+\subsection{Framing and encoding}
+
+Messages \MUST{} be newline-delimited JSON, one object per line, each carrying a \texttt{type}
+field. Both sides \MUST{} serialise via \texttt{Codable} and \texttt{serde} respectively; neither
+side \MAY{} construct JSON by string interpolation. The current Swift client builds gesture JSON by
+interpolation and escapes only the double quote, so a tune name containing a backslash produces
+malformed JSON that the engine silently discards.
+
+Every message \MUST{} carry \texttt{"v": 2}. A client receiving an unrecognised version \MUST{}
+report it rather than degrade.
+
+\subsection{Client to engine}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Type} & \textbf{Fields} \\
+\midrule
+\texttt{pull\_left}, \texttt{pull\_right} & \texttt{steps}, \texttt{velocity} \\
+\texttt{twist}, \texttt{clap}, \texttt{unclap} & --- \\
+\texttt{scissors} & \texttt{name} \\
+\texttt{configure} & \texttt{left}, \texttt{right}, \texttt{pitch\_map}, \texttt{duration\_map}, \texttt{tempo}, \texttt{instrument} \\
+\texttt{quit} & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\texttt{configure} is new and \MUST{} be supported: the instrument is currently configured only by
+command-line flags on the engine, which is unusable from a headset.
+
+\subsection{Engine to client}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Type} & \textbf{Fields} \\
+\midrule
+\texttt{digits}    & \texttt{left}, \texttt{right}, \texttt{left\_pos}, \texttt{right\_pos} \\
+\texttt{note}      & \texttt{pitch}, \texttt{duration}, \texttt{velocity}, \texttt{left\_pos}, \texttt{right\_pos}, \texttt{patch\_index} \\
+\texttt{snip\_ack} & \texttt{name}, \texttt{count}, \texttt{i\_left}, \texttt{i\_right} \\
+\texttt{state}     & \texttt{playing}, \texttt{left\_label}, \texttt{right\_label}, \texttt{tempo}, \texttt{instrument} \\
+\texttt{status}    & \texttt{text} \\
+\texttt{error}     & \texttt{code}, \texttt{text} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Four changes from version 1, each fixing a defect:
+
+\begin{enumerate}[leftmargin=*]
+\item \texttt{state} replaces the practice of inferring playback state by substring-matching the
+      status text. The client currently clears its playing flag on
+      \texttt{statusText.contains("stopped")}, which works only until someone rewords a message.
+      Playback state \MUST{} be a boolean field.
+\item \texttt{note} gains \texttt{patch\_index}. The engine already computes the highlighted patch
+      and does not transmit it, which is why the playing-note cursor is unimplemented on the client.
+\item \texttt{snip\_ack} gains the two cursor positions, per \S\ref{sec:snip}.
+\item \texttt{status} becomes advisory and human-readable only. Nothing in the client \MAY{}
+      parse it.
+\end{enumerate}
+
+\subsection{Rate discipline}
+
+The engine currently emits a \texttt{status} message on every frame of its 60\,Hz loop, beneath a
+comment reading ``Push status if changed'' which describes a check the code does not perform. Each
+message invalidates the entire client panel.
+
+\begin{itemize}[leftmargin=*]
+\item \texttt{status} and \texttt{state} \MUST{} be emitted only on change.
+\item \texttt{digits} \MUST{} be emitted only when a cursor moves, and \MUST{} be coalesced to at
+      most 30\,Hz.
+\item \texttt{note} \MUST{} be emitted per note and \MUSTNOT{} be coalesced.
+\item Aggregate steady-state traffic \SHOULD{} remain below 200 messages per second.
+\end{itemize}
+
+\section{Visual model}
+
+Four elements are specified. All four exist in the current source; three are never called.
+
+\paragraph{Ribbons.} Two receding rows of digit patches, one per stream, coloured by digit value on
+a hue wheel and faded with depth. Patch entities \MUST{} be pooled and reused. Text meshes and
+materials \MUST{} be cached per digit value and per depth bucket, and \MUSTNOT{} be regenerated on
+every update---the current \texttt{PatchEntity.configure} calls
+\texttt{MeshResource.generateText} and constructs a fresh physically-based material for every patch
+on every frame, which is the dominant cost in the render path.
+
+\paragraph{Stitching.} On entering \textsf{Playing}, threads \MUST{} animate between the two
+ribbons, and \MUST{} unstitch on leaving. This is the player's only confirmation that a clap
+registered, and it is currently not wired.
+
+\paragraph{Scissor highlight.} A snip \MUST{} highlight the captured window in gold and animate its
+deposit into the tray. Also implemented, also not wired.
+
+\paragraph{Hand ghosts.} Wireframe hand skeletons \MUST{} mirror the tracked joints. The gesture
+recogniser receives every hand anchor and discards it; the ghost entity is added to the scene and
+never updated. Wiring these is a matter of forwarding anchors the recogniser already holds.
+
+The tray \MUST{} display the digits actually snipped. It currently displays the live ribbon
+contents, which after any subsequent pull are not the same thing.
+
+\section{Audio model}
+
+Audio \MUST{} be synthesised on the headset. In the current architecture the engine drives CoreMIDI
+on the Mac, so the player pulls a ribbon in front of their face and hears the result from a laptop
+across the room, after a network hop and a MIDI buffer. For an instrument this is disqualifying, and
+it makes the latency figure---the single most important measurement of the September sessions---
+unrepresentative of any shipping configuration.
+
+\begin{itemize}[leftmargin=*]
+\item The client \MUST{} render \texttt{note} messages through an on-device sampler.
+\item Audio \SHOULD{} be spatialised so that each ribbon sounds from its own position in the
+      immersive scene. The two streams are distinct objects in front of the player and should be
+      audibly distinct.
+\item Mac-side MIDI output \MAY{} be retained as an option for recording to a digital audio
+      workstation, and \MUSTNOT{} be the default.
+\end{itemize}
+
+\section{Non-functional requirements}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Property} & \textbf{Target} & \textbf{Maximum} \\
+\midrule
+Gesture to audible note & 30 ms & 50 ms \\
+Gesture to visual response & one frame & two frames \\
+Rendered frame rate & 90 fps sustained & --- \\
+Digit emission, memoised range & --- & 1 ms per 1000 digits \\
+Engine to client message rate & $<$ 100 s\textsuperscript{-1} & 200 s\textsuperscript{-1} \\
+Session length without degradation & 45 min & --- \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Failure modes \MUST{} be visible and recoverable. Loss of the channel \MUST{} surface in the panel
+and \MUST{} retry with backoff, preserving engine state across reconnection. Denial of hand-tracking
+authorization \MUST{} produce an explanatory message and fall back to the panel controls, rather
+than a silent console line as at present. The tune tray \MUSTNOT{} silently discard entries; it
+currently caps at twenty and drops the oldest, which over a long session will quietly delete the
+early captures.
+
+\section{Instrumentation}
+\label{sec:instrumentation}
+
+The gesture thresholds are guesses, one of them is provably unreachable, and there exists no data
+against which to tune them. The instrument \MUST{} therefore be able to record its own inputs.
+
+\begin{itemize}[leftmargin=*]
+\item A debug overlay \MUST{} display, live, the computed metrics for each hand: separation, palm
+      velocity, height differential, per-finger extension and curl, and which gesture predicates are
+      currently satisfied.
+\item Raw joint transforms \MUST{} be recordable to disk at tracking rate, with a manual label
+      marker so a tester can annotate ``that was a scissors'' as it happens.
+\item Thresholds \MUST{} be tunable offline against recorded traces and reloadable without a
+      rebuild.
+\end{itemize}
+
+The first half-day of headset time \SHOULD{} be spent capturing a labelled corpus rather than
+playing. Recorded traces are the durable output of the test window: they are the same artifact as a
+performance trace, so this work is not a detour from the product but a first delivery of it.
+
+\section{Conformance checklist}
+
+A build is ready for device testing when all of the following hold.
+
+\begin{enumerate}[leftmargin=*,itemsep=0.15em]
+\item Clean install on device succeeds; entitlements and provisioning verified.
+\item Hand-tracking authorization is requested, granted, and denial is handled visibly.
+\item The engine is discovered automatically; the panel indicates connection within five seconds.
+\item All six gestures fire, each confirmed in the debug overlay, before any music is attempted.
+\item Hand ghosts are visible and track.
+\item Clap produces both stitching and audio from the headset.
+\item Scissors produces a name prompt; the named tune appears in the tray with the correct pair
+      count and the correct digits.
+\item A snipped tune, re-realised from its recorded $(k, i_L, i_R, n)$, is identical to what was
+      heard at the moment of the snip.
+\item 90 fps sustained with sixty patches per ribbon.
+\item Tune tray and performance trace both survive an application restart.
+\item Gesture traces are being written to disk.
+\end{enumerate}
+
+Item 8 is the acceptance test for Section~\ref{sec:snip} and cannot pass on the current build.
+
+\section{Decisions sought}
+\label{sec:decisions}
+
+\begin{enumerate}[leftmargin=*,itemsep=0.4em]
+\item \textbf{Snip semantics.} Adopt resolution (b), independent intervals
+      $\textsf{Snip}(k, i_L, i_R, n)$, and amend \texttt{Skein.module} accordingly?
+\item \textbf{Configuration ordering.} S1 tethered for September with S2 on-device to follow, or go
+      straight to S2 and accept the risk to the test window? S1 is roughly three days; S2 is
+      roughly a week and retires the whole transport question.
+\item \textbf{Modulable maps.} Should pitch and duration maps be gesture-modulable
+      mid-performance (D-1)? If yes, the tune representation must carry them, which touches the
+      Theory.
+\item \textbf{Ribbon width.} The snip window is currently the ribbon width, so the visible ribbon
+      \emph{is} the capture buffer. Is that the intended relationship, or should the capture window
+      be independently adjustable---and if so, by what gesture?
+\item \textbf{Twist during playback.} Permitted, exchanging roles mid-phrase? The state machine
+      above permits it. It is musically interesting and makes the resulting term slightly harder to
+      read.
+\item \textbf{Performance recording consent.} Recording every session by default is proposed here.
+      Confirm, and confirm whether traces leave the device before the player chooses to publish.
+\item \textbf{Naming timeout.} What provisional name, and after how long, when a player does not
+      name a snip?
+\end{enumerate}
+
+\end{document}

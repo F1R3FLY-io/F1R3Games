@@ -1,0 +1,187 @@
+            // F1R3SideChat: an instance is a story. The host sets its meta;
+            // participants create characters and chapters, "take the wheel" of a
+            // free character, and write beats in open chapters as the character
+            // they drive. Anyone with a key may comment; anyone may read.
+            // Keys: (instance, "meta"), (instance, "chars"), (instance, "chapters"),
+            // (instance, "beats", chapter), (instance, "comments", chapter).
+            // Tips move funds and are not part of this environment: use the
+            // wallet or a sponsorship.
+
+            contract env(@"meta", @instance, @meta, ret) = {
+              new whoCh, iCh, ack in {
+                who!(*whoCh) |
+                instanceOf!(instance, *iCh) |
+                for (@by, _ <- whoCh & @inst <- iCh) {
+                  if (inst == Nil) { ret!((false, "unknown instance")) }
+                  else { if (inst.get("host") != by) { ret!((false, "only the host sets the story's meta")) }
+                  else {
+                    TreeHashMap!("set", state, (instance, "meta"), meta, *ack) |
+                    for (_ <- ack) { ret!((true, meta)) }
+                  } }
+                }
+              }
+            } |
+
+            contract env(@"addCharacter", @instance, @charId, @name, @role, ret) = {
+              new whoCh, mCh, cCh, ack in {
+                who!(*whoCh) |
+                for (@by, @ts <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  TreeHashMap!("get", state, (instance, "chars"), *cCh) |
+                  for (@isIn <- mCh & @chars <- cCh) {
+                    if (not isIn) { ret!((false, "join the story first")) }
+                    else {
+                      match chars {
+                        Nil => { TreeHashMap!("set", state, (instance, "chars"), {charId: {"name": name, "role": role, "driver": Nil, "createdBy": by, "at": ts}}, *ack) | for (_ <- ack) { ret!((true, charId)) } }
+                        _ => {
+                          if (chars.contains(charId)) { ret!((false, "character id in use")) }
+                          else {
+                            TreeHashMap!("set", state, (instance, "chars"), chars.set(charId, {"name": name, "role": role, "driver": Nil, "createdBy": by, "at": ts}), *ack) |
+                            for (_ <- ack) { ret!((true, charId)) }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"takeWheel", @instance, @charId, ret) = {
+              new whoCh, mCh, cCh, ack in {
+                who!(*whoCh) |
+                for (@by, _ <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  TreeHashMap!("get", state, (instance, "chars"), *cCh) |
+                  for (@isIn <- mCh & @chars <- cCh) {
+                    if (not isIn) { ret!((false, "join the story first")) }
+                    else { if (chars == Nil or not chars.contains(charId)) { ret!((false, "unknown character")) }
+                    else { if (chars.get(charId).get("driver") != Nil and chars.get(charId).get("driver") != by) { ret!((false, "someone else is driving this character")) }
+                    else {
+                      TreeHashMap!("set", state, (instance, "chars"), chars.set(charId, chars.get(charId).set("driver", by)), *ack) |
+                      for (_ <- ack) { ret!((true, charId)) }
+                    } } }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"release", @instance, @charId, ret) = {
+              new whoCh, cCh, ack in {
+                who!(*whoCh) |
+                TreeHashMap!("get", state, (instance, "chars"), *cCh) |
+                for (@by, _ <- whoCh & @chars <- cCh) {
+                  if (chars == Nil or not chars.contains(charId)) { ret!((false, "unknown character")) }
+                  else { if (chars.get(charId).get("driver") != by) { ret!((false, "you are not driving this character")) }
+                  else {
+                    TreeHashMap!("set", state, (instance, "chars"), chars.set(charId, chars.get(charId).set("driver", Nil)), *ack) |
+                    for (_ <- ack) { ret!((true, charId)) }
+                  } }
+                }
+              }
+            } |
+
+            contract env(@"addChapter", @instance, @chapter, @title, ret) = {
+              new whoCh, mCh, cCh, ack in {
+                who!(*whoCh) |
+                for (@by, @ts <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  TreeHashMap!("get", state, (instance, "chapters"), *cCh) |
+                  for (@isIn <- mCh & @chapters <- cCh) {
+                    if (not isIn) { ret!((false, "join the story first")) }
+                    else {
+                      match chapters {
+                        Nil => { TreeHashMap!("set", state, (instance, "chapters"), [{"id": chapter, "title": title, "status": "open", "by": by, "at": ts}], *ack) | for (_ <- ack) { ret!((true, chapter)) } }
+                        _ => {
+                          TreeHashMap!("set", state, (instance, "chapters"), chapters ++ [{"id": chapter, "title": title, "status": "open", "by": by, "at": ts}], *ack) |
+                          for (_ <- ack) { ret!((true, chapter)) }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            } |
+
+            // A beat: a passage written as the character the caller drives.
+            contract env(@"write", @instance, @chapter, @charId, @text, ret) = {
+              new whoCh, mCh, cCh, chCh, bCh, ack in {
+                who!(*whoCh) |
+                for (@by, @ts <- whoCh) {
+                  member!(instance, by, *mCh) |
+                  TreeHashMap!("get", state, (instance, "chars"), *cCh) |
+                  TreeHashMap!("get", state, (instance, "beats", chapter), *bCh) |
+                  TreeHashMap!("get", state, (instance, "chapters"), *chCh) |
+                  for (@isIn <- mCh & @chars <- cCh & @beats <- bCh & @chapters <- chCh) {
+                    if (not isIn) { ret!((false, "join the story first")) }
+                    else { if (chars == Nil or not chars.contains(charId) or chars.get(charId).get("driver") != by) { ret!((false, "take the wheel of this character first")) }
+                    else { if (text.length() < 1 or text.length() > 4000) { ret!((false, "a beat is 1 to 4000 characters")) }
+                    else {
+                      match beats {
+                        Nil => { TreeHashMap!("set", state, (instance, "beats", chapter), [{"by": by, "character": charId, "text": text, "at": ts}], *ack) }
+                        _ => { TreeHashMap!("set", state, (instance, "beats", chapter), beats ++ [{"by": by, "character": charId, "text": text, "at": ts}], *ack) }
+                      } |
+                      for (_ <- ack) { ret!((true, chapter)) }
+                    } } }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"publishChapter", @instance, @chapter, @index, ret) = {
+              new whoCh, iCh, cCh, ack in {
+                who!(*whoCh) |
+                instanceOf!(instance, *iCh) |
+                TreeHashMap!("get", state, (instance, "chapters"), *cCh) |
+                for (@by, _ <- whoCh & @inst <- iCh & @chapters <- cCh) {
+                  if (inst == Nil or inst.get("host") != by) { ret!((false, "only the host publishes chapters")) }
+                  else { if (chapters == Nil or index < 0 or index >= chapters.length()) { ret!((false, "unknown chapter")) }
+                  else { if (chapters.nth(index).get("id") != chapter) { ret!((false, "chapter and index disagree")) }
+                  else {
+                    TreeHashMap!("set", state, (instance, "chapters"),
+                      chapters.slice(0, index) ++ [chapters.nth(index).set("status", "published")] ++ chapters.slice(index + 1, chapters.length()),
+                      *ack) |
+                    for (_ <- ack) { ret!((true, chapter)) }
+                  } } }
+                }
+              }
+            } |
+
+            // Comments are free for anyone with a key, participant or reader.
+            contract env(@"comment", @instance, @chapter, @text, ret) = {
+              new whoCh, lCh, ack in {
+                who!(*whoCh) |
+                TreeHashMap!("get", state, (instance, "comments", chapter), *lCh) |
+                for (@by, @ts <- whoCh & @comments <- lCh) {
+                  if (text.length() < 1 or text.length() > 1000) { ret!((false, "a comment is 1 to 1000 characters")) }
+                  else {
+                    match comments {
+                      Nil => { TreeHashMap!("set", state, (instance, "comments", chapter), [{"by": by, "text": text, "at": ts}], *ack) }
+                      _ => { TreeHashMap!("set", state, (instance, "comments", chapter), comments ++ [{"by": by, "text": text, "at": ts}], *ack) }
+                    } |
+                    for (_ <- ack) { ret!((true, chapter)) }
+                  }
+                }
+              }
+            } |
+
+            contract env(@"state", @instance, ret) = {
+              new mCh, cCh, chCh in {
+                TreeHashMap!("get", state, (instance, "meta"), *mCh) |
+                TreeHashMap!("get", state, (instance, "chars"), *cCh) |
+                TreeHashMap!("get", state, (instance, "chapters"), *chCh) |
+                for (@meta <- mCh & @chars <- cCh & @chapters <- chCh) {
+                  ret!((true, {"meta": meta, "characters": chars, "chapters": chapters}))
+                }
+              }
+            } |
+
+            contract env(@"chapter", @instance, @chapter, ret) = {
+              new bCh, cCh in {
+                TreeHashMap!("get", state, (instance, "beats", chapter), *bCh) |
+                TreeHashMap!("get", state, (instance, "comments", chapter), *cCh) |
+                for (@beats <- bCh & @comments <- cCh) {
+                  ret!((true, {"beats": beats, "comments": comments}))
+                }
+              }
+            }
