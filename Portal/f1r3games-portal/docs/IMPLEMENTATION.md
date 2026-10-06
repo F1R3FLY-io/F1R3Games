@@ -69,3 +69,50 @@ to the copied `library/std/Cargo.toml`, as was done here).
   private instances require an invitation (`invites.redeem`).
 * Invitation redemption pays a sponsorship's stipend when the invitation names
   one; an inviter who wants to pay newcomers creates a sponsorship and names it.
+
+## F1R3Pix (5 October 2026)
+
+What changed, against `F1R3Pix-design.pdf`:
+
+* `templates/games/f1r3pix.rho` — the game environment (seat, paint, say;
+  board, seats, log, mail, outbox). Parses with the node's parser.
+* `templates/env.rho` — the `payments` domain (`send`, `list`), kept under
+  `(instance, payer)` and written only by the payer. **Installing it means
+  raising `env_version`, and an upgrade re-initialises the environment's maps:
+  existing profiles, instances, plays, invitations and sponsorships on that
+  shard are not carried over.** Do this on a fresh or test shard, or add a
+  migration first.
+* `catalogue` — `payments.send` (in `MOVES_FUNDS`) and `payments.list`; the
+  wallet refuses every fund-moving template from a game origin, and its
+  prompt reads `PAYMENT of <total> from your vault to <n> players`.
+* Wallet — `envelope` module and `openEnvelope` in WASM (needs k256 `ecdh`).
+* Host protocol 2 — `pay`, `open` (declared capabilities), `balance`,
+  `payments`, `profiles` (participants only), `read` with `meta`, and
+  `publicKey` in `hello`.
+* `crates/games/src/pix.rs` — board, seating and play encodings in Rust, so a
+  published play can be checked against `f1r3pix.log`.
+
+Conformance evidence: the JavaScript client generates
+`F1R3Pix/vectors/pix-vectors.json`; the Rust tests (`crates/games/tests/pix.rs`,
+`crates/wallet/tests/envelope.rs`) and the client's tests hold the spiral,
+seating, body and preview encodings, and the sealed envelope, to it byte for
+byte. An envelope sealed in JavaScript opens in the Rust wallet for each
+recipient and the sender, and refuses under another game or instance.
+
+Where the implementation refines the design:
+
+* The random-seating start is the first four bytes of
+  blake2b-256(instance ‖ address), big-endian (f1r3lang integers are 64-bit).
+* Body encoding: the palette count is a varint (palettes may exceed 255
+  colours), and owners are length-prefixed UTF-8 addresses (F1R3Cap
+  addresses are not 20 bytes).
+* `f1r3pix.log` answers cell by cell in spiral order; readers apply the §5.5
+  order (`order_paints` / `orderPaints`). Sorting on chain would cost phlo
+  and add no trust.
+* `seq` in `mail` and `outbox` is the envelope's position in its sender's
+  outbox, computed when read.
+
+Not yet verified (needs a running shard): the environment's runtime
+behaviour (in particular the `/\ Int` and `/\ String` patterns, `toSet`,
+`nth` on the blake2b output and `fromPublicKey` with a 65-byte key), phlo
+per move and read, and the allowance and capacity defaults those costs imply.

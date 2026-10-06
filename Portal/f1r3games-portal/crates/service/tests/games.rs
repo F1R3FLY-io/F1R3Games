@@ -96,19 +96,19 @@ async fn a_game_move_is_rendered_from_the_manifest_and_signed_within_the_allowan
             policy.register_game_template("f1r3pix", tpl, t.get("hash").unwrap().as_str().unwrap()).unwrap();
         }
     }
-    policy.grant(Allowance { game: "f1r3pix".into(), instance: "inst1".into(), templates: ["f1r3pix.place".to_string()].into(), budget: 10_000_000, spent: 0, expires_at: i64::MAX });
+    policy.grant(Allowance { game: "f1r3pix".into(), instance: "inst1".into(), templates: ["f1r3pix.paint".to_string()].into(), budget: 10_000_000, spent: 0, expires_at: i64::MAX });
     let mut w = Wallet::new(ks, policy);
     w.unlock_with_passphrase("pw").unwrap();
 
     let http = reqwest::Client::new();
     let p: J = http.post(format!("{svc}/api/prepare"))
-        .json(&json!({"template": "f1r3pix.place", "game": "f1r3pix", "deployer": w.active_public_key_hex().unwrap(),
-                      "args": {"instance": "inst1", "x": 3, "y": 4, "colour": "#F3D630"}}))
+        .json(&json!({"template": "f1r3pix.paint", "game": "f1r3pix", "deployer": w.active_public_key_hex().unwrap(),
+                      "args": {"instance": "inst1", "colour": "#F3D630"}}))
         .send().await.unwrap().json().await.unwrap();
     assert!(p.get("error").is_none(), "{p}");
     let args: BTreeMap<String, Value> = p["args"].as_object().unwrap().iter().map(|(k, v)| (k.clone(), Value::from_typed_json(v).unwrap())).collect();
     assert!(!args.contains_key("env_uri"), "game templates pin their environment in the source");
-    let req = SignRequest { origin: Origin::Game("f1r3pix".into()), template: "f1r3pix.place".into(), args, prepared: hex::decode(p["prepared"].as_str().unwrap()).unwrap(), instance: Some("inst1".into()) };
+    let req = SignRequest { origin: Origin::Game("f1r3pix".into()), template: "f1r3pix.paint".into(), args, prepared: hex::decode(p["prepared"].as_str().unwrap()).unwrap(), instance: Some("inst1".into()) };
     assert!(matches!(w.review(&req, 0).unwrap(), Decision::Within { .. }));
     let s = w.sign(&req, Consent::Refused, 0).unwrap();
     let r: J = http.post(format!("{svc}/api/send"))
@@ -117,20 +117,21 @@ async fn a_game_move_is_rendered_from_the_manifest_and_signed_within_the_allowan
     assert!(r["deployId"].is_string(), "{r}");
     let term = deploys.lock().unwrap()[0].data.term.clone();
     assert!(term.contains(&format!("rl!(`{game_uri}`, *envCh)")));
-    assert!(term.contains(r##"@env!("place", "inst1", 3, 4, "#F3D630", *deployId)"##));
+    assert!(term.contains(r##"@env!("paint", "inst1", "#F3D630", *deployId)"##));
 
     // A manifest whose source does not match its listed hash is refused.
     let mut bad = manifest.clone();
     if let Value::Map(m) = &mut bad {
         if let Some(Value::List(ts)) = m.get_mut("templates") {
-            if let Value::Map(t0) = &mut ts[0] {
+            // ts[1] is f1r3pix.paint, the template requested below.
+            if let Value::Map(t0) = &mut ts[1] {
                 t0.insert("source".into(), Value::str("new deployId(`rho:system:deployId`) in { deployId!(1) }"));
             }
         }
     }
     *canned.lock().unwrap() = rho(&Value::Tuple(vec![Value::Bool(true), bad]));
     let r = http.post(format!("{svc}/api/prepare"))
-        .json(&json!({"template": "f1r3pix.place", "game": "f1r3pix", "deployer": w.active_public_key_hex().unwrap(), "args": {"instance": "inst1", "x": 1, "y": 1, "colour": "#000000"}}))
+        .json(&json!({"template": "f1r3pix.paint", "game": "f1r3pix", "deployer": w.active_public_key_hex().unwrap(), "args": {"instance": "inst1", "colour": "#000000"}}))
         .send().await.unwrap();
     assert_eq!(r.status().as_u16(), 400);
 }

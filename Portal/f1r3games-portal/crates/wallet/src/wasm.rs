@@ -267,6 +267,18 @@ pub fn sign(origin: &str, template: &str, args_json: &str, prepared_hex: &str, i
 // ------------------------------------------------------------- invitations
 
 /// A fresh invitation key and its link: `{publicKey, link}`.
+/// Open a message envelope (hex) addressed to the active key. The host passes
+/// the hosted game's id and instance (F1R3Pix design R3). Returns {sender, text}.
+#[wasm_bindgen(js_name = openEnvelope)]
+pub fn open_envelope(game: &str, instance: &str, envelope_hex: &str) -> Result<String, JsValue> {
+    let b = unhex(envelope_hex)?;
+    with(|w| {
+        let (sender, pt) = w.open_envelope(game, instance, &b).map_err(err)?;
+        let text = String::from_utf8(pt).map_err(|_| JsValue::from_str("the message is not text"))?;
+        Ok(json(serde_json::json!({ "sender": sender, "text": text })))
+    })
+}
+
 #[wasm_bindgen(js_name = newInvitation)]
 pub fn new_invitation(base_url: &str, instance_id: &str) -> String {
     let k = InviteKey::generate();

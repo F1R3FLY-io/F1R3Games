@@ -63,11 +63,16 @@ fn environment_deploys_carry_a_valid_registry_signature() {
 #[test]
 fn a_call_renders_with_typed_arguments() {
     let g = get("f1r3pix").unwrap();
-    let t = g.call_template(&g.methods[0], "rho:id:abc");
+    let paint = g.methods.iter().find(|m| m.name == "paint").unwrap();
+    let t = g.call_template(paint, "rho:id:abc");
     let mut a = BTreeMap::new();
     a.insert("instance".to_string(), Value::str("i1"));
-    a.insert("x".to_string(), Value::Int(3));
-    a.insert("y".to_string(), Value::Int(4));
     a.insert("colour".to_string(), Value::str("#F3D630"));
-    assert!(t.render(&a).unwrap().contains(r##"@env!("place", "i1", 3, 4, "#F3D630", *deployId)"##));
+    assert!(t.render(&a).unwrap().contains(r##"@env!("paint", "i1", "#F3D630", *deployId)"##));
+    let say = g.call_template(g.methods.iter().find(|m| m.name == "say").unwrap(), "rho:id:abc");
+    a.remove("colour");
+    a.insert("to".to_string(), Value::List(vec![Value::str("1111a")]));
+    a.insert("envelope".to_string(), Value::Bytes(vec![0xa6, 1]));
+    let r = say.render(&a).unwrap();
+    assert!(r.contains(r##"@env!("say", "i1", ["1111a"], "##) && r.contains("a601"), "{r}");
 }

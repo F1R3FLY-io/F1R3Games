@@ -37,6 +37,7 @@ export interface WalletWasm {
   contactsEncrypt(bookJson: string): string;
   contactsDecrypt(hex: string): string;
   contactsImport(bookJson: string, format: string, text: string, now: number): string;
+  openEnvelope(game: string, instance: string, envelopeHex: string): string;
 }
 
 export type Decision =
@@ -122,6 +123,20 @@ export class Wallet {
 
   lock() {
     this.w.lock();
+  }
+
+  /** Recent `openEnvelope` calls, for the rate limit. */
+  private opens: number[] = [];
+  /** Opens per second the wallet allows (F1R3Pix design §8). */
+  openRate = 50;
+
+  /** Open a message envelope addressed to the active key. The host passes the
+   *  game id and instance it is hosting (F1R3Pix design R3); games never do. */
+  openEnvelope(game: string, instance: string, envelopeHex: string, now = Date.now()): { sender: string; text: string } {
+    this.opens = this.opens.filter((t) => now - t < 1000);
+    if (this.opens.length >= this.openRate) throw Object.assign(new Error("too many envelopes opened at once; try again shortly"), { code: "rate-limited" });
+    this.opens.push(now);
+    return JSON.parse(this.w.openEnvelope(game, instance, envelopeHex));
   }
   get unlocked() {
     return this.w.isUnlocked();

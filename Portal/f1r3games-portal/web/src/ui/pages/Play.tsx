@@ -24,7 +24,7 @@ export function Play() {
     const f = frame.current;
     const send = async () => {
       const body = await portal.playBody(id).catch(() => null);
-      f.contentWindow?.postMessage({ f1r3games: 1, event: "preview", data: { header: play.data, body } }, new URL(renderer, location.href).origin);
+      f.contentWindow?.postMessage({ f1r3games: 2, event: "preview", data: { header: play.data, body } }, new URL(renderer, location.href).origin);
     };
     f.addEventListener("load", send);
     return () => f.removeEventListener("load", send);

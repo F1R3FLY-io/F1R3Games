@@ -44,6 +44,20 @@ export interface GameManifest {
   contactsDialogue?: boolean;
   readerTier?: boolean;
   status?: string;
+  /** Host-protocol capabilities beyond the base set (protocol 2: "pay", "open"). */
+  capabilities?: string[];
+}
+/** A payment between participants of an instance, as `payments.list` answers it. */
+export interface Payment {
+  from: string;
+  seq: number;
+  to: string;
+  amount: number;
+  ok: boolean;
+  reason: string;
+  at: number;
+  h: number;
+  memo: string | null;
 }
 export interface Instance {
   id: string;
@@ -171,6 +185,13 @@ export class Portal {
     return plain(r.value) as P;
   }
 
+  /** A read together with the block it reflects. */
+  async readMeta<P = Plain>(template: string, args: { [k: string]: Typed } = {}, game?: string): Promise<{ value: P; blockHash: string | null; blockNumber: number | null }> {
+    const r: any = await this.service.explore(template, args, game);
+    if (!r.ok) throw new Error(r.error ?? "read failed");
+    return { value: plain(r.value) as P, blockHash: r.blockHash ?? null, blockNumber: r.blockNumber ?? null };
+  }
+
   private async readPath<P = Plain>(path: string): Promise<P> {
     const r = await this.service.get(path);
     if (!r.ok) throw new Error(r.error ?? "read failed");
@@ -199,6 +220,21 @@ export class Portal {
   }
   transfer(to: string, amount: number) {
     return this.call("wallet.transfer", { from: this.wallet.address, to, amount: T.int(amount) });
+  }
+
+  // ------------------------------------------------------------ payments between participants
+
+  /** Pay participants of an instance (F1R3Pix design §7). Always prompted; the
+   *  wallet signs this only from the portal. The environment checks again on chain. */
+  async pay(instance: string, transfers: [string, number][], memo: string | null = null) {
+    const inst = await this.instance(instance);
+    if (!inst) throw new Error("unknown instance");
+    const outsiders = transfers.map((t) => t[0]).filter((a) => !inst.participants[a] || a === this.wallet.address);
+    if (outsiders.length) throw Object.assign(new Error("every recipient must be another participant of this game"), { code: "not-participant" });
+    return this.call("payments.send", { instance, transfers: transfers.map(([to, amount]) => [to, T.int(amount)]), memo }, { instance });
+  }
+  async payments(instance: string, cursor: { [payer: string]: number } = {}): Promise<Payment[]> {
+    return (await this.read<Payment[]>("payments.list", { instance, cursor: T.map(cursor) })) ?? [];
   }
 
   // ------------------------------------------------------------ games and instances

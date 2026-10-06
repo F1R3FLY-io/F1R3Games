@@ -16,9 +16,12 @@
 //! * [`contacts`] — the contact book, encrypted under a key derived from the
 //!   person's private key, kept on the client only or backed up on chain as
 //!   ciphertext, at the person's choice.
+//! * [`envelope`] — opening messages sealed to the active key (F1R3Pix
+//!   design §6.2), with the game and instance bound in.
 //! * [`wallet`] — the whole: keys, consent, signing.
 
 pub mod contacts;
+pub mod envelope;
 pub mod keystore;
 pub mod policy;
 pub mod wallet;

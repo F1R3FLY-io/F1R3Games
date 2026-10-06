@@ -64,6 +64,9 @@ pub const METHODS: &[(&str, &str, TemplateKind, &[&str])] = {
         ("contacts", "save", D, &["ciphertext"]),
         ("contacts", "delete", D, &[]),
         ("contacts", "get", E, &["address"]),
+        // Payments between the participants of an instance (F1R3Pix design §7).
+        ("payments", "send", D, &["instance", "transfers", "memo"]),
+        ("payments", "list", E, &["instance", "cursor"]),
     ]
 };
 
@@ -71,7 +74,7 @@ pub const METHODS: &[(&str, &str, TemplateKind, &[&str])] = {
 /// caller's vault authority from `rho:deploy:data`). The call templates bind
 /// no deployer authority themselves, so a wallet cannot see this in the term;
 /// it must know it of the method. Wallets flag these as payments.
-pub const MOVES_FUNDS: &[&str] = &["sponsors.create", "sponsors.fund", TRANSFER];
+pub const MOVES_FUNDS: &[&str] = &["sponsors.create", "sponsors.fund", "payments.send", TRANSFER];
 
 pub fn moves_funds(template: &str) -> bool {
     MOVES_FUNDS.contains(&template)

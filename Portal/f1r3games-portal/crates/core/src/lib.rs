@@ -36,4 +36,5 @@ pub use template::{Template, TemplateError, TemplateKind};
 
 /// Version of the `games` environment's method surface and of the portal ↔
 /// game host protocol.
-pub const PROTOCOL_VERSION: u32 = 1;
+/// 2: `pay`, `open`, `balance`, `payments`, `profiles` and manifest `capabilities` (F1R3Pix design §8).
+pub const PROTOCOL_VERSION: u32 = 2;

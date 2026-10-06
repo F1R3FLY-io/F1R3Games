@@ -25,6 +25,8 @@ use f1r3games_core::{keyfile, registry, Value};
 use k256::ecdsa::SigningKey;
 use std::collections::BTreeMap;
 
+pub mod pix;
+
 pub const PRELUDE: &str = include_str!("../../../templates/games/prelude.rho");
 
 #[derive(Clone, Copy, Debug)]
@@ -53,6 +55,8 @@ pub struct GameSpec {
     pub reader_tier: bool,
     pub body: &'static str,
     pub methods: &'static [Method],
+    /// Host-protocol capabilities beyond the base set (protocol 2: `pay`, `open`).
+    pub capabilities: &'static [&'static str],
 }
 
 const D: TemplateKind = TemplateKind::Deploy;
@@ -66,13 +70,24 @@ pub const GAMES: &[GameSpec] = &[
     GameSpec {
         id: "f1r3pix",
         name: "F1R3Pix",
-        tagline: "Paint one canvas together, pixel by pixel",
+        tagline: "One hexagon each. Make something together.",
         platforms: &["web"],
         galleries: &[Gallery { kind: "canvas", label: "Canvases" }],
         contacts_dialogue: true,
         reader_tier: false,
         body: include_str!("../../../templates/games/f1r3pix.rho"),
-        methods: &[m("place", D, &["instance", "x", "y", "colour"], true), m("state", E, &["instance"], false)],
+        // F1R3Pix design §5.3–5.4: three moves, five reads.
+        methods: &[
+            m("seat", D, &["instance", "pk", "want"], true),
+            m("paint", D, &["instance", "colour"], true),
+            m("say", D, &["instance", "to", "envelope"], true),
+            m("board", E, &["instance"], false),
+            m("seats", E, &["instance"], false),
+            m("log", E, &["instance", "from", "to"], false),
+            m("mail", E, &["instance", "address", "cursor"], false),
+            m("outbox", E, &["instance", "address", "from"], false),
+        ],
+        capabilities: &["pay", "open"],
     },
     GameSpec {
         id: "f1r3beat",
@@ -88,6 +103,7 @@ pub const GAMES: &[GameSpec] = &[
             m("tempo", D, &["instance", "bpm"], true),
             m("state", E, &["instance"], false),
         ],
+        capabilities: &[],
     },
     GameSpec {
         id: "f1r3ink",
@@ -103,6 +119,7 @@ pub const GAMES: &[GameSpec] = &[
             m("ink", D, &["instance", "target", "colour"], true),
             m("state", E, &["instance"], false),
         ],
+        capabilities: &[],
     },
     GameSpec {
         id: "f1r3sidechat",
@@ -125,6 +142,7 @@ pub const GAMES: &[GameSpec] = &[
             m("state", E, &["instance"], false),
             m("chapter", E, &["instance", "chapter"], false),
         ],
+        capabilities: &[],
     },
     GameSpec {
         id: "f1r3skein",
@@ -142,6 +160,7 @@ pub const GAMES: &[GameSpec] = &[
             m("perform", D, &["instance", "device"], true),
             m("session", E, &["instance"], false),
         ],
+        capabilities: &[],
     },
 ];
 
@@ -222,6 +241,7 @@ impl GameSpec {
                 ),
             ),
             ("templates", Value::List(templates)),
+            ("capabilities", Value::List(self.capabilities.iter().map(|c| Value::str(*c)).collect())),
             ("contactsDialogue", Value::Bool(self.contacts_dialogue)),
             ("readerTier", Value::Bool(self.reader_tier)),
             ("envUri", Value::str(env_uri)),

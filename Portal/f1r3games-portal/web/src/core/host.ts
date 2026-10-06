@@ -10,10 +10,15 @@
 // page (a game is then a f1r3lang page holding `portal` instead of a frame).
 
 import type { GameManifest, Portal } from "./portal";
-import { attempt, err, type Result } from "./result";
+import { attempt, CapError, err, type Result } from "./result";
 import type { Plain, Typed } from "./values";
 
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
+
+/** Methods every game may call; anything else must be declared in the manifest's `capabilities`. */
+const BASE = new Set(["hello", "deploy", "read", "publishPlay", "linkPlays", "engage", "invite", "balance", "payments", "profiles"]);
+/** Declarable capabilities (F1R3Pix design §8). */
+export const CAPABILITIES = ["pay", "open"] as const;
 
 export interface HostHooks {
   openInvite(): void;
@@ -56,20 +61,75 @@ export class GameHost {
 
   async dispatch(method: string, p: any): Promise<Result<unknown>> {
     const P = this.portal;
+    if (!BASE.has(method) && !(this.game.capabilities ?? []).includes(method)) {
+      return (CAPABILITIES as readonly string[]).includes(method)
+        ? err("refused", `${this.game.id} did not declare the ${method} capability`)
+        : err("unknown-method", `no method ${method}`);
+    }
     switch (method) {
       case "hello":
         return attempt("hello", async () => ({
           protocol: PROTOCOL,
           address: P.wallet.address,
+          publicKey: P.wallet.publicKey,
           profile: await P.profile().catch(() => null),
           instance: await P.instance(this.instance),
         }));
+      case "pay":
+        // R5: refuse anyone outside the hosted instance before showing a prompt.
+        return attempt("pay", async () => {
+          const to: unknown = p.to, amounts: unknown = p.amounts;
+          if (!Array.isArray(to) || !Array.isArray(amounts) || to.length !== amounts.length || to.length < 1 || to.length > 64) throw new Error("to and amounts must be lists of the same length, 1 to 64");
+          if (!to.every((a) => typeof a === "string") || !amounts.every((n) => Number.isSafeInteger(n) && n > 0)) throw new Error("bad recipients or amounts");
+          if (p.memo !== null && p.memo !== undefined && (typeof p.memo !== "string" || p.memo.length > 140)) throw new Error("the memo must be text of at most 140 characters");
+          try {
+            const r = await P.pay(this.instance, to.map((a, i) => [a as string, amounts[i] as number]), p.memo ?? null);
+            return { deployId: r.deployId };
+          } catch (e: any) {
+            if (e?.code === "not-participant") throw new CapError("not-participant", e.message);
+            if (/not approved/.test(e?.message ?? "")) throw new CapError("declined", "the payment was not approved");
+            if (/insufficient|balance/i.test(e?.message ?? "")) throw new CapError("insufficient", e.message);
+            throw new CapError("node", e?.message ?? String(e));
+          }
+        });
+      case "open":
+        // R3: the host binds the game and instance; the game supplies only the envelope.
+        return attempt("open", async () => {
+          if (typeof p.envelope !== "string" || !/^([0-9a-f]{2})+$/i.test(p.envelope)) throw new Error("the envelope must be hex");
+          try {
+            return P.wallet.openEnvelope(this.game.id, this.instance, p.envelope);
+          } catch (e: any) {
+            if (e?.code === "rate-limited") throw new CapError("rate-limited", e.message);
+            const m = String(e?.message ?? e);
+            throw new CapError(/not addressed/.test(m) ? "not-addressed" : "corrupt", m);
+          }
+        });
+      case "balance":
+        return attempt("balance", async () => {
+          const b = await P.balance();
+          return b?.value ?? b?.balance ?? b;
+        });
+      case "payments":
+        return attempt("payments", () => P.payments(this.instance, p.cursor ?? {}));
+      case "profiles":
+        return attempt("profiles", async () => {
+          const addrs: string[] = Array.isArray(p.addresses) ? p.addresses.slice(0, 256).filter((a: unknown) => typeof a === "string") : [];
+          const inst = await P.instance(this.instance);
+          const out: { [a: string]: unknown } = {};
+          // Only the instance's participants: a game cannot use this to look up arbitrary addresses.
+          for (const a of addrs.filter((a) => inst?.participants[a])) out[a] = await P.profile(a).catch(() => null);
+          return out;
+        });
       case "deploy":
         return attempt("deploy", () =>
           P.call(p.template, this.withInstance(p.template, p.args), { game: this.game.id, origin: this.game.id, instance: this.instance, phloLimit: p.phloLimit }),
         );
       case "read":
-        return attempt("read", () => P.read(p.template, this.withInstance(p.template, p.args), this.game.id));
+        return attempt("read", () =>
+          p.meta
+            ? P.readMeta(p.template, this.withInstance(p.template, p.args), this.game.id)
+            : P.read(p.template, this.withInstance(p.template, p.args), this.game.id),
+        );
       case "publishPlay":
         return attempt("publishPlay", () => P.publishPlay(this.instance, p.kind, p.header as Plain, p.body as string, this.game.id));
       case "linkPlays":

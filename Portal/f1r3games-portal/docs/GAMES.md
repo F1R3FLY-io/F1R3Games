@@ -9,7 +9,7 @@ state behind an environment that checks membership against the portal.
 
 | Game | Moves (play templates, signed within the allowance) | Prompted | Reads | Galleries |
 |---|---|---|---|---|
-| F1R3Pix | `place(instance, x, y, colour)` on a 64×64 canvas | — | `state` | canvas |
+| F1R3Pix | `seat(instance, pk, want)`; `paint(instance, colour)` (your own cell; names no cell); `say(instance, to, envelope)` | — (payments go through the portal's `payments.send`, always prompted) | `board`, `seats`, `log`, `mail`, `outbox` | canvas (whole game or a moment; body = encoded history) |
 | F1R3Beat | `toggle(instance, voice, step, on)` on 8×16; `tempo(instance, bpm)` | — | `state` | pattern (header `parents` for lineage) |
 | F1R3Ink | `tags(instance, tags)`; `ink(instance, target, colour)` | — | `state` (tags and inks per player) | round |
 | F1R3SideChat | `addCharacter`, `takeWheel`, `release`, `addChapter`, `write(instance, chapter, charId, text)` as the character you drive, `comment` (any keyholder) | `meta`, `publishChapter` (host) | `state`, `chapter` (anyone: reader tier) | story |
@@ -40,8 +40,9 @@ keep `game-keys/` safe, and re-register if you rotate one.
 `<base>/<id>/`, and the gallery loads `<base>/<id>/preview/<kind>.html`.
 The game clients themselves are still to be rebuilt against
 `web/src/game-sdk.ts`; until then, the games are playable from the CLI
-(`f1r3games call f1r3pix.place --game f1r3pix --args '{"instance": "…", "x": 3, "y": 4, "colour": "#F3D630"}'`) and their
-galleries are empty.
+(`f1r3games call f1r3pix.paint --game f1r3pix --args '{"instance": "…", "colour": "#F3D630"}'`).
+F1R3Pix has its client: `F1R3Pix/client` (see its README), served at
+`<base>/f1r3pix/` with the gallery renderer at `<base>/f1r3pix/preview/canvas.html`.
 
 ## Verified so far
 
@@ -54,3 +55,19 @@ galleries are empty.
   verifies the signature (`crates/service/tests/games.rs`).
 * Not yet: the environments' behaviour on a live shard. Install and exercise
   F1R3Pix first (one `place`, one `state`), then the others.
+
+## F1R3Pix (design v1, 5 October 2026)
+
+F1R3Pix follows `F1R3Pix-design.pdf`. One hexagon per player on a board of
+fixed radius; `paint` names no cell, so no one can paint another's. Messages
+are sealed to their recipients (`crates/wallet/src/envelope.rs` opens them;
+`F1R3Pix/client/src/core/envelope.js` seals them). Payments are the portal's
+`payments.send`, which only the portal may have signed, always after a prompt.
+
+The instance's `config` (fixed at `instances.create`) must be exactly
+`{capacity: 7..=469, seating: "random" | "claim", palette: Nil | [up to 32 "#RRGGBB"], messageLimit: 1..=65536}`;
+the environment refuses every move on any other configuration (R1). The
+client's launch default is `{capacity: 61, seating: "random", palette: Nil, messageLimit: 2048}`.
+
+Manifests now carry `capabilities` (F1R3Pix: `["pay", "open"]`); the host
+refuses capability methods a game did not declare. Host protocol is 2.

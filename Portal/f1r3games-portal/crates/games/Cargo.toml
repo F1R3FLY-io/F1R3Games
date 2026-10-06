@@ -10,6 +10,7 @@ f1r3games-core.workspace = true
 k256.workspace = true
 serde_json.workspace = true
 hex.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 f1r3games-wallet.workspace = true

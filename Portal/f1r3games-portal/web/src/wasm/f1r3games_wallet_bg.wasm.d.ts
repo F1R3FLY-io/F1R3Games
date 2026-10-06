@@ -21,6 +21,7 @@ export const keystoreJson: () => [number, number, number, number];
 export const listKeys: () => [number, number, number, number];
 export const lock: () => [number, number];
 export const newInvitation: (a: number, b: number, c: number, d: number) => [number, number];
+export const openEnvelope: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
 export const openKeystore: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
 export const passkeys: () => [number, number, number, number];
 export const redeemInvitation: (a: number, b: number) => [number, number, number, number];

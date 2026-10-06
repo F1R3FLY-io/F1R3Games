@@ -1,37 +1,521 @@
-            // F1R3Pix: a shared 64 × 64 canvas per instance. Rows are stored
-            // under (instance, y), so painters on different rows never conflict.
+            // F1R3Pix (design v1, 5 October 2026): one hexagon per player on a
+            // hex board of fixed radius. The only board move is `paint`, which
+            // names no cell: a player can paint only the cell they are seated at.
+            // Messages are sealed envelopes appended to the sender's own outbox.
+            //
+            // State, all scoped by instance (design §5.2):
+            //   ("seat", i, a)    {"cell": [q, r], "pk": bytes, "at": ts, "h": height}
+            //   ("cell", i, q, r) {"owner": a, "colour": "#RRGGBB" | Nil, "at", "h", "n"}
+            //   ("hist", i, q, r) [[h, ts, colour], ...] oldest first
+            //   ("out", i, a)     [{"seq", "to", "env", "at", "h"}, ...]
+            // After seating, every cell, hist and out key has exactly one writer.
+            new blockData(`rho:block:data`),
+                blake2b(`rho:crypto:blake2b256Hash`),
+                height, cfgOf, radiusFor, idxToCell, onBoard, abs, validColour, validPalette,
+                hexDigits, seatAt, probe, allSeated, appendTo,
+                boardCells, seatsOf, logCells, filterHist, mailFrom, filterMail, filterOut
+            in {
 
-            contract env(@"place", @instance, @x, @y, @colour, ret) = {
-              new whoCh, mCh, rCh, ack in {
-                who!(*whoCh) |
-                for (@by, @ts <- whoCh) {
-                  member!(instance, by, *mCh) |
-                  for (@isIn <- mCh) {
-                    if (not isIn) { ret!((false, "join the instance first")) }
-                    else { if (x < 0 or y < 0 or x >= 64 or y >= 64) { ret!((false, "off the canvas")) }
-                    else { if (colour.length() != 7 or colour.slice(0, 1) != "#") { ret!((false, "colour must be #RRGGBB")) }
-                    else {
-                      TreeHashMap!("get", state, (instance, y), *rCh) |
-                      for (@row <- rCh) {
-                        match row {
-                          Nil => { TreeHashMap!("set", state, (instance, y), {x: {"colour": colour, "by": by, "at": ts}}, *ack) }
-                          _ => { TreeHashMap!("set", state, (instance, y), row.set(x, {"colour": colour, "by": by, "at": ts}), *ack) }
-                        } |
-                        for (_ <- ack) { ret!((true, [x, y])) }
-                      }
-                    } } }
+              // ------------------------------------------------ helpers
+
+              contract height(ret) = {
+                new bd in { blockData!(*bd) | for (@n, _, _ <- bd) { ret!(n) } }
+              } |
+
+              // Smallest R with 3R(R+1)+1 >= cap.
+              contract radiusFor(@cap, @r, ret) = {
+                if (3 * r * (r + 1) + 1 >= cap) { ret!(r) } else { radiusFor!(cap, r + 1, *ret) }
+              } |
+
+              contract abs(@n, ret) = { if (n < 0) { ret!(0 - n) } else { ret!(n) } } |
+
+              contract onBoard(@q, @r, @radius, ret) = {
+                new aq, ar, as in {
+                  abs!(q, *aq) | abs!(r, *ar) | abs!(q + r, *as) |
+                  for (@x <- aq & @y <- ar & @z <- as) { ret!(x <= radius and y <= radius and z <= radius) }
+                }
+              } |
+
+              // Spiral index -> [q, r] (design §3.2): ring k starts at (-k, k)
+              // and walks k steps along (+1,0), (+1,-1), (0,-1), (-1,0), (-1,+1), (0,+1).
+              contract idxToCell(@i, ret) = {
+                if (i == 0) { ret!([0, 0]) }
+                else {
+                  new ringOf in {
+                    contract ringOf(@k) = {
+                      if (3 * k * (k + 1) >= i) {
+                        match [i - (3 * k * (k - 1) + 1)] {
+                          [j] => {
+                            match [j / k, j % k] {
+                              [0, s] => { ret!([0 - k + s, k]) }
+                              [1, s] => { ret!([s, k - s]) }
+                              [2, s] => { ret!([k, 0 - s]) }
+                              [3, s] => { ret!([k - s, 0 - k]) }
+                              [4, s] => { ret!([0 - s, 0 - k + s]) }
+                              [5, s] => { ret!([0 - k, s]) }
+                            }
+                          }
+                        }
+                      } else { ringOf!(k + 1) }
+                    } |
+                    ringOf!(1)
                   }
                 }
-              }
-            } |
+              } |
 
-            // The canvas: a list of 64 rows, each Nil or a map x -> cell.
-            contract env(@"state", @instance, ret) = {
-              new kCh, fCh in {
-                keysFor!(instance, 0, 64, [], *kCh) |
-                for (@keys <- kCh) {
-                  fetchAll!(keys, [], *fCh) |
-                  for (@rows <- fCh) { ret!((true, {"width": 64, "height": 64, "rows": rows})) }
+              contract hexDigits(@s, @i, ret) = {
+                if (i >= s.length()) { ret!(true) }
+                else {
+                  if (Set("0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F").contains(s.slice(i, i + 1))) {
+                    hexDigits!(s, i + 1, *ret)
+                  } else { ret!(false) }
+                }
+              } |
+
+              // "#RRGGBB", upper-case hex; in the palette when there is one.
+              contract validColour(@c, @palette, ret) = {
+                match c {
+                  s /\ String => {
+                    if (s.length() != 7) { ret!(false) }
+                    else { if (s.slice(0, 1) != "#") { ret!(false) }
+                    else {
+                      new dCh in {
+                        hexDigits!(s, 1, *dCh) |
+                        for (@ok <- dCh) {
+                          if (not ok) { ret!(false) }
+                          else { if (palette == Nil) { ret!(true) } else { ret!(palette.contains(s)) } }
+                        }
+                      }
+                    } }
+                  }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              contract validPalette(@p, ret) = {
+                match p {
+                  Nil => { ret!(true) }
+                  l /\ List => {
+                    if (l.length() < 1 or l.length() > 32) { ret!(false) }
+                    else {
+                      new loop in {
+                        contract loop(@rest) = {
+                          match rest {
+                            [] => { ret!(true) }
+                            [c ...more] => {
+                              new vCh in {
+                                validColour!(c, Nil, *vCh) |
+                                for (@ok <- vCh) { if (ok) { loop!(more) } else { ret!(false) } }
+                              }
+                            }
+                          }
+                        } |
+                        loop!(l)
+                      }
+                    }
+                  }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // The instance and its validated configuration (R1: no defaults).
+              // Answers (true, cfg + {"radius", "cells"}, inst) or (false, reason, Nil).
+              contract cfgOf(@instance, ret) = {
+                new iCh in {
+                  instanceOf!(instance, *iCh) |
+                  for (@inst <- iCh) {
+                    if (inst == Nil) { ret!(false, "unknown instance", Nil) }
+                    else {
+                      match inst.get("config") {
+                        {"capacity": cap /\ Int, "seating": seating /\ String, "palette": palette, "messageLimit": limit /\ Int} => {
+                          if (cap < 7 or cap > 469 or limit < 1 or limit > 65536 or
+                              not (seating == "random" or seating == "claim")) { ret!(false, "bad config", Nil) }
+                          else {
+                            new pCh, rCh in {
+                              validPalette!(palette, *pCh) | radiusFor!(cap, 1, *rCh) |
+                              for (@pOk <- pCh & @radius <- rCh) {
+                                if (not pOk) { ret!(false, "bad config", Nil) }
+                                else {
+                                  ret!(true, {"capacity": cap, "seating": seating, "palette": palette, "messageLimit": limit,
+                                              "radius": radius, "cells": 3 * radius * (radius + 1) + 1}, inst)
+                                }
+                              }
+                            }
+                          }
+                        }
+                        _ => { ret!(false, "bad config", Nil) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // Write a seat and its cell (unpainted).
+              contract seatAt(@instance, @by, @pk, @q, @r, @ts, ret) = {
+                new hCh, a1, a2 in {
+                  height!(*hCh) |
+                  for (@h <- hCh) {
+                    TreeHashMap!("set", state, ("seat", instance, by), {"cell": [q, r], "pk": pk, "at": ts, "h": h}, *a1) |
+                    TreeHashMap!("set", state, ("cell", instance, q, r), {"owner": by, "colour": Nil, "at": ts, "h": h, "n": 0}, *a2) |
+                    for (_ <- a1 & _ <- a2) { ret!((true, [q, r])) }
+                  }
+                }
+              } |
+
+              // Random seating (D2): first free cell from `start`, in index order, wrapping.
+              contract probe(@instance, @by, @pk, @ts, @start, @t, @n, ret) = {
+                if (t >= n) { ret!((false, "full")) }
+                else {
+                  new cCh, vCh in {
+                    idxToCell!((start + t) % n, *cCh) |
+                    for (@[q, r] <- cCh) {
+                      TreeHashMap!("get", state, ("cell", instance, q, r), *vCh) |
+                      for (@v <- vCh) {
+                        if (v == Nil) { seatAt!(instance, by, pk, q, r, ts, *ret) }
+                        else { probe!(instance, by, pk, ts, start, t + 1, n, *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // Every address in `to` is seated in `instance`.
+              contract allSeated(@instance, @to, ret) = {
+                match to {
+                  [] => { ret!(true) }
+                  [a ...rest] => {
+                    new sCh in {
+                      TreeHashMap!("get", state, ("seat", instance, a), *sCh) |
+                      for (@s <- sCh) { if (s == Nil) { ret!(false) } else { allSeated!(instance, rest, *ret) } }
+                    }
+                  }
+                }
+              } |
+
+              // Append `item` to the list at `key`; answers the index it took.
+              contract appendTo(@key, @item, ret) = {
+                new lCh, ack in {
+                  TreeHashMap!("get", state, key, *lCh) |
+                  for (@l <- lCh) {
+                    match l {
+                      Nil => { TreeHashMap!("set", state, key, [item], *ack) | for (_ <- ack) { ret!(0) } }
+                      _ => { TreeHashMap!("set", state, key, l ++ [item], *ack) | for (_ <- ack) { ret!(l.length()) } }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ moves (play templates)
+
+              // seat(instance, pk, want): pk is the caller's uncompressed public key,
+              // checked against the caller's address; want is Nil (random) or [q, r] (claim).
+              contract env(@"seat", @instance, @pk, @want, ret) = {
+                new whoCh, cCh, aCh, sCh, hCh in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        vaultAddress!("fromPublicKey", pk, *aCh) |
+                        for (@owner <- aCh) {
+                          if (owner != by) { ret!((false, "public key is not the caller's")) }
+                          else {
+                            TreeHashMap!("get", state, ("seat", instance, by), *sCh) |
+                            for (@seat <- sCh) {
+                              if (seat != Nil) { ret!((true, seat.get("cell"))) }
+                              else {
+                                if (cfg.get("seating") == "random") {
+                                  if (want != Nil) { ret!((false, "this instance seats at random")) }
+                                  else {
+                                    blake2b!((instance ++ by).toUtf8Bytes(), *hCh) |
+                                    for (@h <- hCh) {
+                                      // h read as a big-endian u32 from its first four bytes
+                                      probe!(instance, by, pk, ts,
+                                        ((h.nth(0) * 256 + h.nth(1)) * 256 + h.nth(2)) * 256 + h.nth(3),
+                                        0, cfg.get("cells"), *ret)
+                                    }
+                                  }
+                                } else {
+                                  match want {
+                                    [q /\ Int, r /\ Int] => {
+                                      new bCh, vCh in {
+                                        onBoard!(q, r, cfg.get("radius"), *bCh) |
+                                        for (@on <- bCh) {
+                                          if (not on) { ret!((false, "off the board")) }
+                                          else {
+                                            TreeHashMap!("get", state, ("cell", instance, q, r), *vCh) |
+                                            for (@v <- vCh) {
+                                              if (v != Nil) { ret!((false, "taken")) }
+                                              else { seatAt!(instance, by, pk, q, r, ts, *ret) }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                    _ => { ret!((false, "claim seating needs a cell [q, r]")) }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // paint(instance, colour): the caller's own cell, while active.
+              contract env(@"paint", @instance, @colour, ret) = {
+                new whoCh, cCh, vCh, sCh, oCh, hCh, a1, a2 in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") != "active") { ret!((false, "the game is not active")) }
+                      else {
+                        validColour!(colour, cfg.get("palette"), *vCh) |
+                        for (@valid <- vCh) {
+                          if (not valid) { ret!((false, "colour must be #RRGGBB, upper case, in the palette")) }
+                          else {
+                            TreeHashMap!("get", state, ("seat", instance, by), *sCh) |
+                            for (@seat <- sCh) {
+                              if (seat == Nil) { ret!((false, "take a seat first")) }
+                              else {
+                                match seat.get("cell") {
+                                  [q, r] => {
+                                    TreeHashMap!("get", state, ("cell", instance, q, r), *oCh) |
+                                    height!(*hCh) |
+                                    for (@cell <- oCh & @h <- hCh) {
+                                      TreeHashMap!("set", state, ("cell", instance, q, r),
+                                        {"owner": by, "colour": colour, "at": ts, "h": h, "n": cell.get("n") + 1}, *a1) |
+                                      appendTo!(("hist", instance, q, r), [h, ts, colour], *a2) |
+                                      for (_ <- a1 & _ <- a2) { ret!((true, {"cell": [q, r], "colour": colour, "h": h})) }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // say(instance, to, envelope): a sealed envelope to 1..64 distinct seated
+              // participants other than the caller, appended to the caller's outbox.
+              contract env(@"say", @instance, @to, @envelope, ret) = {
+                new whoCh, cCh, sCh, hCh in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        match [to, envelope] {
+                          [rcpts /\ List, env /\ ByteArray] => {
+                            if (rcpts.length() < 1 or rcpts.length() > 64 or rcpts.toSet().size() != rcpts.length()
+                                or rcpts.toSet().contains(by)) { ret!((false, "recipients must be 1 to 64 distinct other players")) }
+                            else { if (env.length() > cfg.get("messageLimit")) { ret!((false, "message too long")) }
+                            else {
+                              allSeated!(instance, rcpts, *sCh) |
+                              for (@seated <- sCh) {
+                                if (not seated) { ret!((false, "every recipient must be seated")) }
+                                else {
+                                  height!(*hCh) |
+                                  for (@h <- hCh) {
+                                    new aCh in {
+                                      appendTo!(("out", instance, by), {"to": rcpts, "env": env, "at": ts, "h": h}, *aCh) |
+                                      for (@seq <- aCh) { ret!((true, seq)) }
+                                    }
+                                  }
+                                }
+                              }
+                            } }
+                          }
+                          _ => { ret!((false, "to must be a list of addresses and envelope bytes")) }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ reads (explore templates)
+
+              contract boardCells(@instance, @i, @n, @acc, ret) = {
+                if (i >= n) { ret!(acc) }
+                else {
+                  new cCh, vCh in {
+                    idxToCell!(i, *cCh) |
+                    for (@[q, r] <- cCh) {
+                      TreeHashMap!("get", state, ("cell", instance, q, r), *vCh) |
+                      for (@v <- vCh) {
+                        if (v == Nil) { boardCells!(instance, i + 1, n, acc, *ret) }
+                        else { boardCells!(instance, i + 1, n, acc ++ [v.set("q", q).set("r", r).set("i", i)], *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract env(@"board", @instance, ret) = {
+                new cCh, bCh in {
+                  cfgOf!(instance, *cCh) |
+                  for (@ok, @cfg, @inst <- cCh) {
+                    if (not ok) { ret!((false, cfg)) }
+                    else {
+                      boardCells!(instance, 0, cfg.get("cells"), [], *bCh) |
+                      for (@cells <- bCh) {
+                        ret!((true, {"radius": cfg.get("radius"), "capacity": cfg.get("capacity"), "seating": cfg.get("seating"),
+                                     "palette": cfg.get("palette"), "messageLimit": cfg.get("messageLimit"),
+                                     "status": inst.get("status"), "cells": cells}))
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract seatsOf(@instance, @addresses, @acc, ret) = {
+                match addresses {
+                  [] => { ret!(acc) }
+                  [a ...rest] => {
+                    new sCh in {
+                      TreeHashMap!("get", state, ("seat", instance, a), *sCh) |
+                      for (@s <- sCh) {
+                        if (s == Nil) { seatsOf!(instance, rest, acc, *ret) }
+                        else { seatsOf!(instance, rest, acc.set(a, {"cell": s.get("cell"), "pk": s.get("pk")}), *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract env(@"seats", @instance, ret) = {
+                new pCh, sCh in {
+                  participants!(instance, *pCh) |
+                  for (@ps <- pCh) {
+                    seatsOf!(instance, ps, {}, *sCh) |
+                    for (@m <- sCh) { ret!((true, m)) }
+                  }
+                }
+              } |
+
+              contract filterHist(@hist, @owner, @q, @r, @from, @to, @acc, ret) = {
+                match hist {
+                  [] => { ret!(acc) }
+                  [[h, ts, c] ...rest] => {
+                    if (h >= from and h < to) { filterHist!(rest, owner, q, r, from, to, acc ++ [[h, ts, owner, q, r, c]], *ret) }
+                    else { filterHist!(rest, owner, q, r, from, to, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract logCells(@instance, @i, @n, @from, @to, @acc, ret) = {
+                if (i >= n) { ret!(acc) }
+                else {
+                  new cCh, vCh, hCh, fCh in {
+                    idxToCell!(i, *cCh) |
+                    for (@[q, r] <- cCh) {
+                      TreeHashMap!("get", state, ("cell", instance, q, r), *vCh) |
+                      TreeHashMap!("get", state, ("hist", instance, q, r), *hCh) |
+                      for (@v <- vCh & @hist <- hCh) {
+                        if (v == Nil or hist == Nil) { logCells!(instance, i + 1, n, from, to, acc, *ret) }
+                        else {
+                          filterHist!(hist, v.get("owner"), q, r, from, to, acc, *fCh) |
+                          for (@acc2 <- fCh) { logCells!(instance, i + 1, n, from, to, acc2, *ret) }
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // Paints with from <= h < to, as [h, ts, owner, q, r, colour], cell by
+              // cell in spiral order; readers order them as design §5.5 says.
+              contract env(@"log", @instance, @from, @to, ret) = {
+                new cCh, lCh in {
+                  cfgOf!(instance, *cCh) |
+                  for (@ok, @cfg, _ <- cCh) {
+                    if (not ok) { ret!((false, cfg)) }
+                    else {
+                      logCells!(instance, 0, cfg.get("cells"), from, to, [], *lCh) |
+                      for (@entries <- lCh) { ret!((true, entries)) }
+                    }
+                  }
+                }
+              } |
+
+              contract filterMail(@sender, @outbox, @address, @after, @seq, @acc, ret) = {
+                match outbox {
+                  [] => { ret!(acc) }
+                  [m ...rest] => {
+                    if (seq > after and m.get("to").contains(address)) {
+                      filterMail!(sender, rest, address, after, seq + 1, acc ++ [m.set("from", sender).set("seq", seq)], *ret)
+                    } else { filterMail!(sender, rest, address, after, seq + 1, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract mailFrom(@instance, @senders, @address, @cursor, @acc, ret) = {
+                match senders {
+                  [] => { ret!(acc) }
+                  [s ...rest] => {
+                    new oCh, fCh in {
+                      TreeHashMap!("get", state, ("out", instance, s), *oCh) |
+                      for (@out <- oCh) {
+                        if (out == Nil) { mailFrom!(instance, rest, address, cursor, acc, *ret) }
+                        else {
+                          filterMail!(s, out, address, cursor.getOrElse(s, -1), 0, acc, *fCh) |
+                          for (@acc2 <- fCh) { mailFrom!(instance, rest, address, cursor, acc2, *ret) }
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // Envelopes addressed to `address` after `cursor` (a map sender -> last seq seen).
+              contract env(@"mail", @instance, @address, @cursor, ret) = {
+                new pCh, mCh in {
+                  participants!(instance, *pCh) |
+                  for (@ps <- pCh) {
+                    match cursor {
+                      c /\ Map => { mailFrom!(instance, ps, address, c, [], *mCh) }
+                      _ => { mailFrom!(instance, ps, address, {}, [], *mCh) }
+                    } |
+                    for (@m <- mCh) { ret!((true, m)) }
+                  }
+                }
+              } |
+
+              contract filterOut(@out, @from, @seq, @acc, ret) = {
+                match out {
+                  [] => { ret!(acc) }
+                  [m ...rest] => {
+                    if (seq >= from) { filterOut!(rest, from, seq + 1, acc ++ [m.set("seq", seq)], *ret) }
+                    else { filterOut!(rest, from, seq + 1, acc, *ret) }
+                  }
+                }
+              } |
+
+              // The address's own sent envelopes from seq `from` onwards.
+              contract env(@"outbox", @instance, @address, @from, ret) = {
+                new oCh, fCh in {
+                  TreeHashMap!("get", state, ("out", instance, address), *oCh) |
+                  for (@out <- oCh) {
+                    if (out == Nil) { ret!((true, [])) }
+                    else { filterOut!(out, from, 0, [], *fCh) | for (@l <- fCh) { ret!((true, l)) } }
+                  }
                 }
               }
             }

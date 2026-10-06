@@ -25,6 +25,8 @@ pub enum WalletError {
     Policy(#[from] PolicyError),
     #[error("the person did not approve this signature")]
     NotApproved,
+    #[error(transparent)]
+    Envelope(#[from] crate::envelope::EnvelopeError),
 }
 
 pub struct Wallet {
@@ -93,6 +95,13 @@ impl Wallet {
     pub fn active_key(&self) -> Result<SigningKey, WalletError> {
         let a = self.keystore.active.clone().ok_or(WalletError::NoActiveKey)?;
         Ok(self.keystore.key(self.unlocked()?, &a)?)
+    }
+
+    /// Open a message envelope addressed to the active key. `game` and
+    /// `instance` come from the host, never from the game (F1R3Pix design R3).
+    pub fn open_envelope(&self, game: &str, instance: &str, envelope: &[u8]) -> Result<(String, Vec<u8>), WalletError> {
+        let me = self.active_address()?.to_string();
+        Ok(crate::envelope::open(game, instance, &me, &self.active_key()?, envelope)?)
     }
 
     pub fn active_public_key_hex(&self) -> Result<String, WalletError> {

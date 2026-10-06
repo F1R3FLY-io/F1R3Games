@@ -71,10 +71,14 @@ export function listKeys(): string;
 
 export function lock(): void;
 
+export function newInvitation(base_url: string, instance_id: string): string;
+
 /**
  * A fresh invitation key and its link: `{publicKey, link}`.
+ * Open a message envelope (hex) addressed to the active key. The host passes
+ * the hosted game's id and instance (F1R3Pix design R3). Returns {sender, text}.
  */
-export function newInvitation(base_url: string, instance_id: string): string;
+export function openEnvelope(game: string, instance: string, envelope_hex: string): string;
 
 /**
  * Open a stored keystore (locked).
@@ -136,6 +140,7 @@ export interface InitOutput {
     readonly listKeys: () => [number, number, number, number];
     readonly lock: () => [number, number];
     readonly newInvitation: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly openEnvelope: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly openKeystore: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly passkeys: () => [number, number, number, number];
     readonly redeemInvitation: (a: number, b: number) => [number, number, number, number];

@@ -69,7 +69,7 @@ pub enum PolicyError {
     NotDeploy(String),
     #[error("the environment deploy is signed only by the service's own keys")]
     EnvDeploy,
-    #[error("the transfer template may be signed only from the portal")]
+    #[error("templates that move funds may be signed only from the portal")]
     TransferFromGame,
     #[error("env_uri {0} is not the pinned environment {1}")]
     EnvUri(String, String),
@@ -142,7 +142,8 @@ impl Policy {
             if t.id == catalogue::ENV {
                 return Err(PolicyError::EnvDeploy);
             }
-            if t.id == catalogue::TRANSFER && req.origin != Origin::Portal {
+            // Anything that moves funds is signed only from the portal (F1R3Pix design R4).
+            if catalogue::moves_funds(&t.id) && req.origin != Origin::Portal {
                 return Err(PolicyError::TransferFromGame);
             }
             return Ok(t);
@@ -222,7 +223,12 @@ fn summarise(template: &str, args: &BTreeMap<String, Value>) -> String {
         parts.push(format!("{k} = {shown}"));
     }
     let call = format!("{template}({})", parts.join(", "));
-    if catalogue::moves_funds(template) {
+    if let (true, Some(Value::List(ts))) = (catalogue::moves_funds(template), args.get("transfers")) {
+        let amounts: Vec<i64> = ts.iter().filter_map(|t| match t { Value::List(p) | Value::Tuple(p) => p.get(1).and_then(Value::as_int), _ => None }).collect();
+        let total: i64 = amounts.iter().sum();
+        let n = ts.len();
+        format!("PAYMENT of {total} from your vault to {n} player{}: {call}", if n == 1 { "" } else { "s" })
+    } else if catalogue::moves_funds(template) {
         let amount = args.get("amount").and_then(Value::as_int).map(|a| a.to_string()).unwrap_or_else(|| "funds".into());
         format!("PAYMENT of {amount} from your vault: {call}")
     } else {

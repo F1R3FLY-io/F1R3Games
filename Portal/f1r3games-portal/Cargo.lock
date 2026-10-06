@@ -445,6 +445,7 @@ dependencies = [
  "ff",
  "generic-array",
  "group",
+ "hkdf",
  "pkcs8",
  "rand_core 0.6.4",
  "sec1",
@@ -509,6 +510,7 @@ dependencies = [
  "hex",
  "k256",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]
@@ -567,6 +569,7 @@ dependencies = [
  "aes-gcm",
  "base64 0.22.1",
  "f1r3games-core",
+ "getrandom 0.2.17",
  "hex",
  "hkdf",
  "k256",

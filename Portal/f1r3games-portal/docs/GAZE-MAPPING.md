@@ -35,6 +35,8 @@ capabilities and matches the same answers.
 | `contacts` | import CSV/vCard, encrypt/decrypt book, backup ciphertext | WASM wallet + `store` | none | a contacts capability (book encrypted under a key derived from the wallet key; HKDF info `f1r3games/contacts/v1`, same bytes as the web wallet so a backup opens in either) |
 | `passkey` | WebAuthn PRF output to unwrap the keystore | `core/passkey.ts` | keys in the OS keychain already | nothing new for unlock: OS keychain + biometrics plays this role |
 | `share` | deliver an invitation link | Web Share / `mailto:` / clipboard | none | `share` capability (OS share sheet) |
+| `pay` | pay participants of the hosted instance | `GameHost` `pay` → `Portal.pay` → `payments.send` (prompted, portal origin only) | none | the `pay` capability of §3, attenuated to the instance's participants; `payments.send` is the first method declared to go through it |
+| `open` | open a message envelope sealed to the active key | `Wallet.openEnvelope` (Rust `envelope::open`), game and instance bound by the host | none | a wallet operation doing ECDH with the identity key under a caller-fixed `info` string (`<game>/msg/v1` ‖ instance), never yielding the key |
 | `frame` | host a game, answer its protocol | sandboxed iframe + `GameHost` | none (no page-to-page capabilities) | hand a game page an attenuated `portal` capability: `deploy` (its own templates, within allowance), `read`, `publishPlay`, `invite`, `engage` — the five methods of `core/host.ts`, now as a name instead of `postMessage` |
 
 ## 3. The first thing to settle in F1R3Gaze: authority reached through installed contracts
