@@ -298,8 +298,18 @@ impl Value {
     }
 
     /// The portal's methods answer `(true, value)` or `(false, reason)`.
+    ///
+    /// F1R3Node-Rust's web API drops Nil from tuples and lists when it renders
+    /// a result as JSON (`expr_from_par_proto` maps an empty Par to nothing, and
+    /// tuples and lists `filter_map` over their elements), so `(true, Nil)`
+    /// arrives as `(true)`. A one-element outcome therefore means a Nil value.
     pub fn into_outcome(self) -> Result<Value, String> {
         match self {
+            Value::Tuple(v) if v.len() == 1 => match v[0] {
+                Value::Bool(true) => Ok(Value::Nil),
+                Value::Bool(false) => Err("refused".into()),
+                ref other => Err(format!("unexpected outcome flag {other:?}")),
+            },
             Value::Tuple(mut v) if v.len() == 2 => {
                 let value = v.pop().unwrap();
                 match v.pop().unwrap() {
@@ -321,5 +331,19 @@ mod unescape_tests {
             assert_eq!(super::unescape(&super::escape(s).unwrap()), s);
         }
         assert_eq!(super::unescape("no escapes here"), "no escapes here");
+    }
+}
+
+#[cfg(test)]
+mod outcome_tests {
+    use super::Value;
+
+    #[test]
+    fn a_nil_value_dropped_by_the_node_reads_as_nil() {
+        assert_eq!(Value::Tuple(vec![Value::Bool(true)]).into_outcome(), Ok(Value::Nil));
+        assert_eq!(Value::Tuple(vec![Value::Bool(false)]).into_outcome(), Err("refused".to_string()));
+        assert_eq!(Value::Tuple(vec![Value::Bool(true), Value::Int(3)]).into_outcome(), Ok(Value::Int(3)));
+        assert!(Value::Tuple(vec![Value::Int(1)]).into_outcome().is_err());
+        assert!(Value::Int(1).into_outcome().is_err());
     }
 }
