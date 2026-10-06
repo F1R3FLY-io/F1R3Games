@@ -93,6 +93,11 @@ export interface Sponsorship {
 }
 
 export const DAY_MS = 86_400_000;
+
+/** Undo the Rholang string escaping (`\"` and `\\`) the portal writes; see crates/core/src/rho.rs `unescape`. */
+export function unescapeRho(s: string): string {
+  return s.replace(/\\(["\\])/g, "$1");
+}
 export const today = (now = Date.now()) => Math.floor(now / DAY_MS);
 
 /** Canonical JSON for comparing typed values. */
@@ -275,7 +280,16 @@ export class Portal {
    *  wallet and grant the allowance within which play is signed unprompted. */
   enterGame(g: GameManifest, instance: string, budget: number, hours = 4) {
     for (const t of g.templates.filter((t) => t.kind === "deploy")) {
-      this.wallet.registerGameTemplate(g.id, t.id, t.source, t.hash);
+      // The node keeps string literals verbatim, so a source read back from the
+      // manifest may still carry the escapes it was written with. The listed hash
+      // decides: the wallet accepts whichever text matches it, and nothing else.
+      try {
+        this.wallet.registerGameTemplate(g.id, t.id, t.source, t.hash);
+      } catch (e) {
+        const unescaped = unescapeRho(t.source);
+        if (unescaped === t.source) throw e;
+        this.wallet.registerGameTemplate(g.id, t.id, unescaped, t.hash);
+      }
     }
     const play = g.templates.filter((t) => t.play && t.kind === "deploy").map((t) => t.id);
     this.wallet.grantAllowance(g.id, instance, play, budget, Date.now() + hours * 3_600_000);

@@ -55,6 +55,31 @@ fn escape(s: &str) -> Result<String, RhoError> {
     Ok(s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// Undo [`escape`]. F1R3Node-Rust keeps a string literal's text verbatim
+/// (it does not process `\"` or `\\` escapes), so a string written with
+/// quotes inside it comes back from the shard with the backslashes still in it.
+/// Readers that check a hash (game template sources) try the text as read and,
+/// failing that, this unescaped form.
+pub fn unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut it = s.chars();
+    while let Some(c) = it.next() {
+        if c == '\\' {
+            match it.next() {
+                Some(n @ ('"' | '\\')) => out.push(n),
+                Some(n) => {
+                    out.push('\\');
+                    out.push(n)
+                }
+                None => out.push('\\'),
+            }
+        } else {
+            out.push(c)
+        }
+    }
+    out
+}
+
 impl Value {
     pub fn str(s: impl Into<String>) -> Value {
         Value::String(s.into())
@@ -285,5 +310,16 @@ impl Value {
             }
             other => Err(format!("unexpected outcome {other:?}")),
         }
+    }
+}
+
+#[cfg(test)]
+mod unescape_tests {
+    #[test]
+    fn unescape_inverts_escape() {
+        for s in ["@env!(\"seat\", {{instance}})", "a\\b", "plain", "\\\"", "tail\\"] {
+            assert_eq!(super::unescape(&super::escape(s).unwrap()), s);
+        }
+        assert_eq!(super::unescape("no escapes here"), "no escapes here");
     }
 }

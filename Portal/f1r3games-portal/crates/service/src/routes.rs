@@ -135,9 +135,16 @@ async fn resolve(st: &Shared, template: &str, game: Option<&str>, kind: Template
                     Some("explore") => TemplateKind::Explore,
                     _ => TemplateKind::Deploy,
                 };
-                let t = Template::new(template, declared, source);
-                if entry.get("hash").and_then(Value::as_str) != Some(t.hash_hex().as_str()) {
-                    return Err(bad(format!("{g}/{template}: source does not match its listed hash")));
+                // The listed hash is the anchor. The node keeps string literals
+                // verbatim, so a source read back may still carry the escapes it
+                // was written with; accept the unescaped text only if it matches.
+                let listed = entry.get("hash").and_then(Value::as_str);
+                let mut t = Template::new(template, declared, source);
+                if listed != Some(t.hash_hex().as_str()) {
+                    t = Template::new(template, declared, f1r3games_core::rho::unescape(source));
+                    if listed != Some(t.hash_hex().as_str()) {
+                        return Err(bad(format!("{g}/{template}: source does not match its listed hash")));
+                    }
                 }
                 if declared != kind {
                     return Err(bad(format!("{g}/{template} is not a {kind:?} template")));

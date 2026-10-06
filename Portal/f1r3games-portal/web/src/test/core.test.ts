@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { Portal, type ConsentRequest } from "../core/portal";
+import { Portal, unescapeRho, type ConsentRequest } from "../core/portal";
 import { GameHost } from "../core/host";
 import { HttpService } from "../core/service";
 import { MemoryStore } from "../core/store";
@@ -181,5 +181,18 @@ describe("the portal core against the real service and a verifying node", () => 
     p.wallet.openRate = 2;
     await host.dispatch("open", { envelope: env });
     expect((await host.dispatch("open", { envelope: env }))[1]).toBe("rate-limited");
+  });
+
+  it("accepts a template source read back with its escapes still in, but only if it matches the listed hash", async () => {
+    expect(unescapeRho('@env!(\\"seat\\", {{instance}})')).toBe('@env!("seat", {{instance}})');
+    expect(unescapeRho("a\\\\b")).toBe("a\\b");
+    const p = await boot();
+    const src = 'new deployId(`rho:system:deployId`) in { deployId!(("seat", {{x}})) }';
+    const { hashHex } = await import("./harness");
+    const escaped = src.replace(/"/g, '\\"');
+    const game = { id: "g", name: "G", entry: "https://g.example/", galleries: [], templates: [{ id: "g.seat", kind: "deploy" as const, hash: hashHex(src), source: escaped, play: true }] };
+    expect(() => p.enterGame(game, "inst", 1000)).not.toThrow();
+    const forged = { ...game, templates: [{ ...game.templates[0], source: escaped.replace("seat", "steal") }] };
+    expect(() => p.enterGame(forged, "inst", 1000)).toThrow();
   });
 });
