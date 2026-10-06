@@ -8,7 +8,7 @@ service_key_file  = "service-key.json"
 env_key_file      = "env-key.json"
 token_secret_file = "token-secret.hex"
 static_dir        = "../web/dist"
-portal_base_url = "http://127.0.0.1:8640"
+#portal_base_url = "http://127.0.0.1:8640"
 
 #listen = "127.0.0.1:8640"
 #shard_id = "root"
@@ -26,8 +26,8 @@ portal_base_url = "http://127.0.0.1:8640"
 #deploy_ttl_ms = 600000
 #token_ttl_secs = 3600
 #bootstrap_env = true
-#cors_origins = ["http://localhost:5173"]
-#portal_base_url = "http://localhost:5173"
+cors_origins = ["http://localhost:5173"]
+portal_base_url = "http://localhost:5173"
 
 [faucet]
 enabled = true

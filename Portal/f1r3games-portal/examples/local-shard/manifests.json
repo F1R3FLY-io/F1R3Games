@@ -4,15 +4,19 @@
     "id": "f1r3pix",
     "manifest": {
       "map": {
+        "capabilities": [
+          "pay",
+          "open"
+        ],
         "contactsDialogue": true,
-        "entry": "http://127.0.0.1:8640/play/f1r3pix/",
+        "entry": "http://localhost:5174/f1r3pix/",
         "envUri": "rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn",
         "galleries": [
           {
             "map": {
               "kind": "canvas",
               "label": "Canvases",
-              "renderer": "http://127.0.0.1:8640/play/f1r3pix/preview/canvas.html"
+              "renderer": "http://localhost:5174/f1r3pix/preview/canvas.html"
             }
           }
         ],
@@ -21,26 +25,80 @@
         "platforms": [
           "web"
         ],
-        "protocol": 1,
+        "protocol": 2,
         "readerTier": false,
-        "tagline": "Paint one canvas together, pixel by pixel",
+        "tagline": "One hexagon each. Make something together.",
         "templates": [
           {
             "map": {
-              "hash": "a40ab3db34e3256d0585f28a88c9be60de98485ce7d910a452b990499fc17cda",
-              "id": "f1r3pix.place",
+              "hash": "b6b48cc9141db29211f70ba7c9c1c5e37a02f908435b4d185fd7a39529fa6c21",
+              "id": "f1r3pix.seat",
               "kind": "deploy",
               "play": true,
-              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"place\", {{instance}}, {{x}}, {{y}}, {{colour}}, *deployId) } }"
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"seat\", {{instance}}, {{pk}}, {{want}}, *deployId) } }"
             }
           },
           {
             "map": {
-              "hash": "c88c1a23486016ce6c81da80d2a2ca7d97a8bbf31bad9c2bd2e75f465fce5ffa",
-              "id": "f1r3pix.state",
+              "hash": "b5395677210b3bb175d47073db5f13ccbb856470b95289f45ddd3c07aa217bbb",
+              "id": "f1r3pix.paint",
+              "kind": "deploy",
+              "play": true,
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"paint\", {{instance}}, {{colour}}, *deployId) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "75a641737c245c281b40601d6617a2c95a124ec97b6c382841a235361581f8aa",
+              "id": "f1r3pix.say",
+              "kind": "deploy",
+              "play": true,
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"say\", {{instance}}, {{to}}, {{envelope}}, *deployId) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "c03f36b1aa2d8e225c186cfdf6b218b1f3bb8eca8cee06c2310d8407985ade96",
+              "id": "f1r3pix.board",
               "kind": "explore",
               "play": false,
-              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"state\", {{instance}}, *ret) } }"
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"board\", {{instance}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "10709c5f97ff30b0cc7a91afa7376f0419c9920834fb451f573b84e06b4c395e",
+              "id": "f1r3pix.seats",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"seats\", {{instance}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "9d73f7eb014ec906036ad48f207c34506f4bbe3bfeb4f113c84047cb8fb8ea15",
+              "id": "f1r3pix.log",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"log\", {{instance}}, {{from}}, {{to}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "ebc9cc1d9d1e1f663a9a8dfe0d7a8a6fc09f3b13ec115e8c61d3479d71be976b",
+              "id": "f1r3pix.mail",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"mail\", {{instance}}, {{address}}, {{cursor}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "94b086342cd3a97619c63f94593f7c0b3e27412628f504c3beed009289fd10de",
+              "id": "f1r3pix.outbox",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn`, *envCh) | for (@(_, env) <- envCh) { @env!(\"outbox\", {{instance}}, {{address}}, {{from}}, *ret) } }"
             }
           }
         ]
@@ -52,15 +110,16 @@
     "id": "f1r3beat",
     "manifest": {
       "map": {
+        "capabilities": [],
         "contactsDialogue": true,
-        "entry": "http://127.0.0.1:8640/play/f1r3beat/",
+        "entry": "http://localhost:5174/f1r3beat/",
         "envUri": "rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9",
         "galleries": [
           {
             "map": {
               "kind": "pattern",
               "label": "Patterns",
-              "renderer": "http://127.0.0.1:8640/play/f1r3beat/preview/pattern.html"
+              "renderer": "http://localhost:5174/f1r3beat/preview/pattern.html"
             }
           }
         ],
@@ -69,7 +128,7 @@
         "platforms": [
           "web"
         ],
-        "protocol": 1,
+        "protocol": 2,
         "readerTier": false,
         "tagline": "Grow rhythms together; the ones people love reproduce",
         "templates": [
@@ -109,15 +168,16 @@
     "id": "f1r3ink",
     "manifest": {
       "map": {
+        "capabilities": [],
         "contactsDialogue": true,
-        "entry": "http://127.0.0.1:8640/play/f1r3ink/",
+        "entry": "http://localhost:5174/f1r3ink/",
         "envUri": "rho:id:p1oums6x8atsy8dcjdwjk667prhurdrzbdzwektt7ydjct1tq1xwwn",
         "galleries": [
           {
             "map": {
               "kind": "round",
               "label": "Rounds",
-              "renderer": "http://127.0.0.1:8640/play/f1r3ink/preview/round.html"
+              "renderer": "http://localhost:5174/f1r3ink/preview/round.html"
             }
           }
         ],
@@ -126,7 +186,7 @@
         "platforms": [
           "web"
         ],
-        "protocol": 1,
+        "protocol": 2,
         "readerTier": false,
         "tagline": "Colour one another with what you see in them",
         "templates": [
@@ -166,15 +226,16 @@
     "id": "f1r3sidechat",
     "manifest": {
       "map": {
+        "capabilities": [],
         "contactsDialogue": true,
-        "entry": "http://127.0.0.1:8640/play/f1r3sidechat/",
+        "entry": "http://localhost:5174/f1r3sidechat/",
         "envUri": "rho:id:pr3xc8n7kma1ti1ikpd1yoyyr5bmyy5rz37zae7z7wm5k4g8xx5qs8",
         "galleries": [
           {
             "map": {
               "kind": "story",
               "label": "Stories",
-              "renderer": "http://127.0.0.1:8640/play/f1r3sidechat/preview/story.html"
+              "renderer": "http://localhost:5174/f1r3sidechat/preview/story.html"
             }
           }
         ],
@@ -183,7 +244,7 @@
         "platforms": [
           "web"
         ],
-        "protocol": 1,
+        "protocol": 2,
         "readerTier": true,
         "tagline": "Write a story together; take the wheel of a character",
         "templates": [
@@ -286,22 +347,23 @@
     "id": "f1r3skein",
     "manifest": {
       "map": {
+        "capabilities": [],
         "contactsDialogue": false,
-        "entry": "http://127.0.0.1:8640/play/f1r3skein/",
+        "entry": "http://localhost:5174/f1r3skein/",
         "envUri": "rho:id:bzugd6es1njmjy6jsqupyn4b1ebjobkz4k15bye87n4scugekypiqr",
         "galleries": [
           {
             "map": {
               "kind": "performance",
               "label": "Performances",
-              "renderer": "http://127.0.0.1:8640/play/f1r3skein/preview/performance.html"
+              "renderer": "http://localhost:5174/f1r3skein/preview/performance.html"
             }
           },
           {
             "map": {
               "kind": "tune",
               "label": "Tunes",
-              "renderer": "http://127.0.0.1:8640/play/f1r3skein/preview/tune.html"
+              "renderer": "http://localhost:5174/f1r3skein/preview/tune.html"
             }
           }
         ],
@@ -311,7 +373,7 @@
           "visionos",
           "web"
         ],
-        "protocol": 1,
+        "protocol": 2,
         "readerTier": false,
         "tagline": "Play the ribbons; snip tunes from your performances",
         "templates": [
