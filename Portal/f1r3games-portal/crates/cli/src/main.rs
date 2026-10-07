@@ -60,6 +60,9 @@ enum Cmd {
         game: String,
         #[arg(long, default_value = "unlisted")]
         visibility: String,
+        /// The instance configuration, as typed JSON (maps written {"map": {...}}); F1R3Pix and F1R3Beat require one.
+        #[arg(long, default_value = r#"{"map":{}}"#)]
+        config: String,
     },
     /// Invitations.
     Invite {
@@ -439,12 +442,13 @@ async fn main() -> Result<()> {
             let (id, _) = ctx.call("profiles.save", [("profile".to_string(), profile)].into_iter().collect(), &[], None).await?;
             println!("deploy {id}");
         }
-        Cmd::Launch { game, visibility } => {
+        Cmd::Launch { game, visibility, config } => {
             let mut ctx = open(&cli).await?;
+            let config = Value::from_typed_json(&serde_json::from_str::<Json>(config).context("--config is not JSON")?)?;
             let args = [
                 ("game".to_string(), Value::str(game.clone())),
                 ("visibility".to_string(), Value::str(visibility.clone())),
-                ("config".to_string(), Value::map::<String>([])),
+                ("config".to_string(), config),
             ]
             .into_iter()
             .collect();
