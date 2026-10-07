@@ -9,14 +9,14 @@
           "open"
         ],
         "contactsDialogue": true,
-        "entry": "http://localhost:5174/f1r3pix/",
+        "entry": "http://localhost:5174/f1r3pix/f1r3pix/",
         "envUri": "rho:id:i77caonhattnqq7mrdexmsqjib7wrf3krfkny4e7u7fxj6ry3sgtgn",
         "galleries": [
           {
             "map": {
               "kind": "canvas",
               "label": "Canvases",
-              "renderer": "http://localhost:5174/f1r3pix/preview/canvas.html"
+              "renderer": "http://localhost:5174/f1r3pix/f1r3pix/preview/canvas.html"
             }
           }
         ],
@@ -110,16 +110,26 @@
     "id": "f1r3beat",
     "manifest": {
       "map": {
-        "capabilities": [],
+        "capabilities": [
+          "pay",
+          "open"
+        ],
         "contactsDialogue": true,
-        "entry": "http://localhost:5174/f1r3beat/",
+        "entry": "http://localhost:5174/f1r3pix/f1r3beat/",
         "envUri": "rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9",
         "galleries": [
           {
             "map": {
               "kind": "pattern",
               "label": "Patterns",
-              "renderer": "http://localhost:5174/f1r3beat/preview/pattern.html"
+              "renderer": "http://localhost:5174/f1r3pix/f1r3beat/preview/pattern.html"
+            }
+          },
+          {
+            "map": {
+              "kind": "session",
+              "label": "Sessions",
+              "renderer": "http://localhost:5174/f1r3pix/f1r3beat/preview/session.html"
             }
           }
         ],
@@ -130,33 +140,132 @@
         ],
         "protocol": 2,
         "readerTier": false,
-        "tagline": "Grow rhythms together; the ones people love reproduce",
+        "tagline": "One step each. Make a groove together.",
         "templates": [
           {
             "map": {
-              "hash": "669cef86578da8ad54443cda4c7bbb13a5cccc2ccc81e8800cd86a55b7139252",
-              "id": "f1r3beat.toggle",
+              "hash": "544d42f4e939c833e8cba845d9bfcc4e0c7922923b8997ee8c0d49aebb43fb29",
+              "id": "f1r3beat.seat",
               "kind": "deploy",
               "play": true,
-              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"toggle\", {{instance}}, {{voice}}, {{step}}, {{on}}, *deployId) } }"
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"seat\", {{instance}}, {{pk}}, {{want}}, *deployId) } }"
             }
           },
           {
             "map": {
-              "hash": "dab11e2afd7ec91177b9dedc4a0e9dddf628fa7c444b78739548112c2476494a",
-              "id": "f1r3beat.tempo",
+              "hash": "796025fbc018849c3002b97fbc62e4fc75bd40386cba3e00d5f9c1b0374354e4",
+              "id": "f1r3beat.set",
               "kind": "deploy",
               "play": true,
-              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"tempo\", {{instance}}, {{bpm}}, *deployId) } }"
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"set\", {{instance}}, {{note}}, *deployId) } }"
             }
           },
           {
             "map": {
-              "hash": "01d8a728ae328e7dbcd74679457eb1a71e4eb046df4a60d1c822b747129889ea",
-              "id": "f1r3beat.state",
+              "hash": "2a22143fdc293e0a07896d001c97bc9fbcdbbacd044f5c6f1d6f9c1a09258a61",
+              "id": "f1r3beat.listen",
+              "kind": "deploy",
+              "play": true,
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"listen\", {{instance}}, {{bpm}}, *deployId) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "f786f238a0f90791ded95daf9a11c7aab51b9736257d71c47a927292c0b33aa6",
+              "id": "f1r3beat.say",
+              "kind": "deploy",
+              "play": true,
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"say\", {{instance}}, {{to}}, {{envelope}}, *deployId) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "7fe5665af99b551ba83af49ac17454650431cd984ad9eff4c217b4fede45b0e4",
+              "id": "f1r3beat.setBreeder",
+              "kind": "deploy",
+              "play": false,
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"setBreeder\", {{address}}, *deployId) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "0568d17b5214597766167470b4f08b6d047ca08d98ab082bf92356d4c2719431",
+              "id": "f1r3beat.epoch",
+              "kind": "deploy",
+              "play": false,
+              "source": "new deployId(`rho:system:deployId`), rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"epoch\", {{epoch}}, {{record}}, *deployId) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "4b9f1b5b23b3aa6e9d4fbd52b2088b9cd17714697d60666d6f0c9410fb18ad56",
+              "id": "f1r3beat.grid",
               "kind": "explore",
               "play": false,
-              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"state\", {{instance}}, *ret) } }"
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"grid\", {{instance}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "93d5d1949ae97e12e3d03522e8f1662252bf34598bac614abdd68b419ad18f67",
+              "id": "f1r3beat.seats",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"seats\", {{instance}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "cb4b9f786384843d7786dc60edf479de068cbb12ac67d1d2386648d56497cd57",
+              "id": "f1r3beat.log",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"log\", {{instance}}, {{from}}, {{to}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "f36e32e441f63d412ed5269e335e33441b56fca84510a43497115c65c664c8aa",
+              "id": "f1r3beat.mail",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"mail\", {{instance}}, {{address}}, {{cursor}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "ec5dfc67a70fa8b41826753df5f0d6b896d962ce0a90b95dc958212f6d56dc1f",
+              "id": "f1r3beat.outbox",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"outbox\", {{instance}}, {{address}}, {{from}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "5a55c63f02af6e0f9429a66e5f22e724d1524c5c1b443f635d61b71488ebb383",
+              "id": "f1r3beat.population",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"population\", {{cursor}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "fb3919286e3cbc5945620ccd9283e77e74b6548eb1076bcf5af2c07cb5bebf76",
+              "id": "f1r3beat.epochRecord",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"epochRecord\", {{epoch}}, *ret) } }"
+            }
+          },
+          {
+            "map": {
+              "hash": "86d77ba883eeb68c870f4d6b071eeaf751f79f9184318c55e346cee4cc3f05dd",
+              "id": "f1r3beat.member",
+              "kind": "explore",
+              "play": false,
+              "source": "new ret, rl(`rho:registry:lookup`), envCh in { rl!(`rho:id:s8hq8wedk69hzefpk5ey3yre9j98wjzb1doyogas5kxso7huzbwhx9`, *envCh) | for (@(_, env) <- envCh) { @env!(\"member\", {{digest}}, *ret) } }"
             }
           }
         ]
@@ -170,14 +279,14 @@
       "map": {
         "capabilities": [],
         "contactsDialogue": true,
-        "entry": "http://localhost:5174/f1r3ink/",
+        "entry": "http://localhost:5174/f1r3pix/f1r3ink/",
         "envUri": "rho:id:p1oums6x8atsy8dcjdwjk667prhurdrzbdzwektt7ydjct1tq1xwwn",
         "galleries": [
           {
             "map": {
               "kind": "round",
               "label": "Rounds",
-              "renderer": "http://localhost:5174/f1r3ink/preview/round.html"
+              "renderer": "http://localhost:5174/f1r3pix/f1r3ink/preview/round.html"
             }
           }
         ],
@@ -228,14 +337,14 @@
       "map": {
         "capabilities": [],
         "contactsDialogue": true,
-        "entry": "http://localhost:5174/f1r3sidechat/",
+        "entry": "http://localhost:5174/f1r3pix/f1r3sidechat/",
         "envUri": "rho:id:pr3xc8n7kma1ti1ikpd1yoyyr5bmyy5rz37zae7z7wm5k4g8xx5qs8",
         "galleries": [
           {
             "map": {
               "kind": "story",
               "label": "Stories",
-              "renderer": "http://localhost:5174/f1r3sidechat/preview/story.html"
+              "renderer": "http://localhost:5174/f1r3pix/f1r3sidechat/preview/story.html"
             }
           }
         ],
@@ -349,21 +458,21 @@
       "map": {
         "capabilities": [],
         "contactsDialogue": false,
-        "entry": "http://localhost:5174/f1r3skein/",
+        "entry": "http://localhost:5174/f1r3pix/f1r3skein/",
         "envUri": "rho:id:bzugd6es1njmjy6jsqupyn4b1ebjobkz4k15bye87n4scugekypiqr",
         "galleries": [
           {
             "map": {
               "kind": "performance",
               "label": "Performances",
-              "renderer": "http://localhost:5174/f1r3skein/preview/performance.html"
+              "renderer": "http://localhost:5174/f1r3pix/f1r3skein/preview/performance.html"
             }
           },
           {
             "map": {
               "kind": "tune",
               "label": "Tunes",
-              "renderer": "http://localhost:5174/f1r3skein/preview/tune.html"
+              "renderer": "http://localhost:5174/f1r3pix/f1r3skein/preview/tune.html"
             }
           }
         ],
