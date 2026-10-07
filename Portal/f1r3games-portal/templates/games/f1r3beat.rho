@@ -21,6 +21,9 @@
             // A cell's index is c = 5 * step + row. Seeded cells (D16) are read from
             // the configuration until someone sits there. After seating, every cell,
             // hist, seat and out key has exactly one writer.
+            // F1R3Node-Rust's simple types are Bool, Int, String, Uri and ByteArray:
+            // `x /\ List` makes `List` a free variable, so a pattern may not use it
+            // twice. Lists are bound plainly here.
             // Lists have no `contains` on F1R3Node-Rust: test membership with
             // `.toSet().contains(x)`. Nil is dropped from lists in the node's JSON,
             // so readers treat a missing last element of a hist or log entry as Nil.
@@ -95,7 +98,7 @@
               contract seedOk(@seed, @cells, ret) = {
                 match seed {
                   Nil => { ret!(true) }
-                  {"play": _ /\ String, "digest": _ /\ String, "cells": list /\ List} => {
+                  {"play": _ /\ String, "digest": _ /\ String, "cells": list} => {
                     if (list.length() > cells) { ret!(false) }
                     else {
                       new loop in {
@@ -413,7 +416,7 @@
                       else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
                       else {
                         match [to, envelope] {
-                          [rcpts /\ List, env /\ ByteArray] => {
+                          [rcpts, env /\ ByteArray] => {
                             if (rcpts.length() < 1 or rcpts.length() > 64 or rcpts.toSet().size() != rcpts.length()
                                 or rcpts.toSet().contains(by)) { ret!((false, "recipients must be 1 to 64 distinct other players")) }
                             else { if (env.length() > cfg.get("messageLimit")) { ret!((false, "message too long")) }
@@ -474,7 +477,7 @@
                     if (breeder == Nil or by != breeder) { ret!((false, "only the breeder may run an epoch")) }
                     else {
                       match [e, record] {
-                        [epoch /\ Int, {"block": _, "weights": _, "parents": _, "admitted": admitted /\ List, "culled": culled /\ List}] => {
+                        [epoch /\ Int, {"block": _, "weights": _, "parents": _, "admitted": admitted, "culled": culled}] => {
                           if (last != Nil and epoch <= last) { ret!((false, "epochs must increase")) }
                           else {
                             new loop, idxCh, wCh, ack1, ack2, ack3 in {
