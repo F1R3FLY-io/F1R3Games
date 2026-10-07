@@ -78,15 +78,13 @@ impl Node {
     /// it is refused as expired. `seqNumber` is kept only as a fallback for a
     /// node that does not serve `/api/blocks/{depth}`.
     pub async fn valid_after(&self) -> Result<i64, NodeError> {
-        if let Ok(resp) = self.http.get(format!("{}/api/blocks/1", self.validator)).send().await {
-            if let Ok(j) = check(resp).await {
-                if let Some(n) = j.as_array().and_then(|bs| bs.iter().filter_map(|b| b.get("blockNumber").and_then(Json::as_i64)).max()) {
-                    return Ok(n);
-                }
-            }
+        let resp = self.http.get(format!("{}/api/blocks/1", self.validator)).send().await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            let j = check(self.http.get(format!("{}/api/prepare-deploy", self.validator)).send().await?).await?;
+            return j.get("seqNumber").and_then(Json::as_i64).ok_or_else(|| NodeError::Shape(j.to_string()));
         }
-        let j = check(self.http.get(format!("{}/api/prepare-deploy", self.validator)).send().await?).await?;
-        j.get("seqNumber").and_then(Json::as_i64).ok_or_else(|| NodeError::Shape(j.to_string()))
+        let j = check(resp).await?;
+        latest_block_number(&j).ok_or_else(|| NodeError::Shape(format!("no blockNumber in /api/blocks/1: {}", truncate(&j.to_string()))))
     }
 
     /// Submit a signed deploy; returns the deploy id (the signature, hex).
@@ -144,5 +142,35 @@ impl Node {
 
     pub async fn balance(&self, address: &str) -> Result<Json, NodeError> {
         check(self.http.get(format!("{}/api/balance/{address}", self.observer)).send().await?).await
+    }
+}
+
+/// The highest `blockNumber` in a `/api/blocks/{depth}` answer. F1R3Node-Rust
+/// 0.4.x wraps each block's summary as `{"blockInfo": {..., "blockNumber"}}`;
+/// a bare summary is accepted too.
+pub fn latest_block_number(j: &Json) -> Option<i64> {
+    j.as_array()?
+        .iter()
+        .filter_map(|b| b.get("blockInfo").unwrap_or(b).get("blockNumber").and_then(Json::as_i64))
+        .max()
+}
+
+fn truncate(s: &str) -> String {
+    s.chars().take(300).collect()
+}
+
+#[cfg(test)]
+mod valid_after_tests {
+    use super::latest_block_number;
+    use serde_json::json;
+
+    #[test]
+    fn reads_the_block_number_as_the_node_serves_it() {
+        // As F1R3Node-Rust 0.4.46 answers GET /api/blocks/1 (abridged).
+        let wrapped = json!([{ "blockInfo": { "blockHash": "96cd", "seqNum": 3074, "blockNumber": 3141 } },
+                             { "blockInfo": { "blockHash": "2c94", "seqNum": 3070, "blockNumber": 3140 } }]);
+        assert_eq!(latest_block_number(&wrapped), Some(3141));
+        assert_eq!(latest_block_number(&json!([{ "blockNumber": 7 }])), Some(7));
+        assert_eq!(latest_block_number(&json!({ "error": "x" })), None);
     }
 }
