@@ -1,13 +1,15 @@
 //! Configuration (TOML).
 //!
 //! ```toml
-//! listen = "127.0.0.1:8640"
+//! listen = "127.0.0.1:8640"                  # or a list: ["127.0.0.1:40700", "[::1]:40700"]
+//! public_host = "localhost:40700"            # optional: the only Host served (F4)
 //! shard_id = "root"
 //! validator_url = "http://127.0.0.1:40413"   # a bonded validator
+//! validator_urls = ["http://127.0.0.1:40413", "http://127.0.0.1:40423"]  # optional (F7)
 //! observer_url  = "http://127.0.0.1:40453"   # a read-only node
-//! service_key_file = "service-key.json"      # pays env deploy and faucet
-//! env_key_file = "env-key.json"              # registry key of the games environment
-//! token_secret_file = "token-secret.hex"     # 32+ bytes, hex
+//! service_key_file = "service-key.json"      # pays env deploy and faucet (or F1R3GAMES_SERVICE_KEY)
+//! env_key_file = "env-key.json"              # registry key of the games environment (or F1R3GAMES_ENV_KEY)
+//! token_secret_file = "token-secret.hex"     # 32+ bytes, hex (or F1R3GAMES_TOKEN_SECRET)
 //! coop_address = "1111..."                   # F1R3FLY.io Cooperative: game registry governance
 //! env_version = 1
 //! phlo_price = 1
@@ -22,11 +24,16 @@
 //! [faucet]
 //! enabled = true
 //! amount = 100000000
+//! [[origins]]                                # a game client on an origin of its own (F2)
+//! id = "f1r3pix"
+//! listen = ["127.0.0.1:40701", "[::1]:40701"]
+//! public_host = "localhost:40701"
+//! dir = "games"                              # serves dir/f1r3pix at /f1r3pix/
 //! ```
 
 use serde::Deserialize;
 
-fn d_listen() -> String { "127.0.0.1:8640".into() }
+fn d_listen() -> Listen { Listen::One("127.0.0.1:8640".into()) }
 fn d_shard() -> String { "root".into() }
 fn d_price() -> i64 { 1 }
 fn d_limit() -> i64 { 500_000 }
@@ -35,6 +42,23 @@ fn d_ttl() -> i64 { 600_000 }
 fn d_token_ttl() -> i64 { 3600 }
 fn d_version() -> i64 { 1 }
 fn d_true() -> bool { true }
+
+/// One listen address or several (F4: both loopback families).
+#[derive(Clone, Debug, Deserialize, PartialEq)]
+#[serde(untagged)]
+pub enum Listen {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Listen {
+    pub fn addrs(&self) -> Vec<String> {
+        match self {
+            Listen::One(s) => vec![s.clone()],
+            Listen::Many(v) => v.clone(),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Faucet {
@@ -50,13 +74,40 @@ impl Default for Faucet {
     }
 }
 
+/// A game client served from an origin of its own (F2).
+#[derive(Clone, Debug, Deserialize)]
+pub struct GameOrigin {
+    /// The game id; the origin serves `<dir>/<id>/` at `/<id>/` and nothing else.
+    pub id: String,
+    pub listen: Listen,
+    /// The only `Host` this origin answers (F4); loopback literals are redirected to it.
+    #[serde(default)]
+    pub public_host: Option<String>,
+    /// The directory holding `<id>/` (a built client: `index.html`, `preview/…`).
+    pub dir: String,
+    /// The origins allowed to frame this game (`Content-Security-Policy:
+    /// frame-ancestors`). Defaults to the origin of `portal_base_url`.
+    #[serde(default)]
+    pub frame_ancestors: Vec<String>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Config {
     #[serde(default = "d_listen")]
-    pub listen: String,
+    pub listen: Listen,
+    /// The only `Host` the portal answers (F4). Requests naming a loopback
+    /// literal at the same port are redirected here; any other Host gets 421.
+    #[serde(default)]
+    pub public_host: Option<String>,
     #[serde(default = "d_shard")]
     pub shard_id: String,
+    /// A bonded validator. Either this or `validator_urls` must be given.
+    #[serde(default)]
     pub validator_url: String,
+    /// Several validators (F7): one is drawn per deploy, and another is tried
+    /// when one cannot be reached.
+    #[serde(default)]
+    pub validator_urls: Vec<String>,
     pub observer_url: String,
     #[serde(default)]
     pub service_key_file: String,
@@ -90,6 +141,9 @@ pub struct Config {
     pub static_dir: String,
     #[serde(default)]
     pub faucet: Faucet,
+    /// Game clients served by this process, each on its own origin (F2).
+    #[serde(default)]
+    pub origins: Vec<GameOrigin>,
 }
 
 impl Config {
@@ -97,6 +151,80 @@ impl Config {
         let c: Config = toml::from_str(s)?;
         f1r3games_core::Address::parse(&c.coop_address)
             .map_err(|e| anyhow::anyhow!("coop_address: {e}"))?;
+        anyhow::ensure!(!c.validators().is_empty(), "validator_url or validator_urls must be given");
+        for o in &c.origins {
+            anyhow::ensure!(
+                !o.id.is_empty() && o.id.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_'),
+                "origins: bad game id {:?}",
+                o.id
+            );
+            anyhow::ensure!(!o.listen.addrs().is_empty(), "origins.{}: no listen address", o.id);
+        }
         Ok(c)
+    }
+
+    /// Every configured validator, `validator_urls` first, without repeats.
+    pub fn validators(&self) -> Vec<String> {
+        let mut v: Vec<String> = Vec::new();
+        for u in self.validator_urls.iter().chain(std::iter::once(&self.validator_url)) {
+            let u = u.trim_end_matches('/').to_string();
+            if !u.is_empty() && !v.contains(&u) {
+                v.push(u);
+            }
+        }
+        v
+    }
+
+    /// The scheme and authority of `portal_base_url` (for `frame-ancestors`).
+    pub fn portal_origin(&self) -> Option<String> {
+        let u = self.portal_base_url.trim();
+        let (scheme, rest) = u.split_once("://")?;
+        let host = rest.split('/').next()?;
+        (!host.is_empty()).then(|| format!("{scheme}://{host}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const COOP: &str = "1111sQDawGqQKzEQQ1zNKyqxDKBmzDiZTWURnPh2Ah3F2DdftKdNE";
+
+    #[test]
+    fn the_old_form_still_reads() {
+        let c = Config::from_toml(&format!("listen = \"127.0.0.1:8640\"\nvalidator_url = \"http://v/\"\nobserver_url = \"http://o\"\ncoop_address = \"{COOP}\"\n")).unwrap();
+        assert_eq!(c.listen.addrs(), vec!["127.0.0.1:8640"]);
+        assert_eq!(c.validators(), vec!["http://v"]);
+        assert!(c.origins.is_empty() && c.public_host.is_none());
+    }
+
+    #[test]
+    fn lists_origins_and_validators() {
+        let c = Config::from_toml(&format!(
+            r#"listen = ["127.0.0.1:40700", "[::1]:40700"]
+public_host = "localhost:40700"
+validator_urls = ["http://a", "http://b"]
+validator_url = "http://a"
+observer_url = "http://o"
+coop_address = "{COOP}"
+portal_base_url = "http://localhost:40700"
+[[origins]]
+id = "f1r3pix"
+listen = ["127.0.0.1:40701", "[::1]:40701"]
+dir = "games"
+"#
+        ))
+        .unwrap();
+        assert_eq!(c.listen.addrs().len(), 2);
+        assert_eq!(c.validators(), vec!["http://a", "http://b"]);
+        assert_eq!(c.origins[0].id, "f1r3pix");
+        assert_eq!(c.portal_origin().as_deref(), Some("http://localhost:40700"));
+    }
+
+    #[test]
+    fn refuses_no_validator_and_bad_ids() {
+        assert!(Config::from_toml(&format!("observer_url = \"http://o\"\ncoop_address = \"{COOP}\"\n")).is_err());
+        let bad = format!("validator_url = \"http://v\"\nobserver_url = \"http://o\"\ncoop_address = \"{COOP}\"\n[[origins]]\nid = \"../x\"\nlisten = \"127.0.0.1:1\"\ndir = \"d\"\n");
+        assert!(Config::from_toml(&bad).is_err());
     }
 }

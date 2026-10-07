@@ -87,3 +87,12 @@ f1r3games invite create <instance-id>        # prints the invitation link
 
 See `docs/IMPLEMENTATION.md` for conformance evidence and what remains to be
 verified on a live shard.
+
+## Installed by ign1t10n
+
+ign1t10n (v0.4 and later) installs and supervises all of this: it keeps the
+keys in the Keychain and passes them in the environment, runs `bootstrap
+--wait`, `games-install --wait`, `games-manifests --entry ID=BASE` and
+`register-games` as jobs, and serves the portal at `http://localhost:40700`
+with F1R3Pix and F1R3Beat on origins of their own (`[[origins]]`). See
+`docs/IMPLEMENTATION.md`, "Supervised by ign1t10n".

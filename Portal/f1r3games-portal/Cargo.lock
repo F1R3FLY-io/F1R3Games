@@ -479,6 +479,7 @@ dependencies = [
  "f1r3games-games",
  "f1r3games-wallet",
  "hex",
+ "k256",
  "reqwest",
  "serde_json",
  "tokio",

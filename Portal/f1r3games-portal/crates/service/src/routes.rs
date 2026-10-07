@@ -36,6 +36,7 @@ type R<T> = Result<Json<T>, ApiError>;
 pub fn router(st: Shared) -> Router {
     Router::new()
         .route("/api/health", get(|| async { Json(json!({ "ok": true })) }))
+        .route("/api/ready", get(ready))
         .route("/api/env", get(env_info))
         .route("/api/templates", get(templates))
         .route("/api/prepare", post(prepare))
@@ -59,6 +60,21 @@ pub fn router(st: Shared) -> Router {
         .route("/api/contacts/{address}", get(contacts))
         .with_state(st.clone())
         .fallback_service(static_files(&st))
+}
+
+#[derive(Deserialize)]
+pub struct ReadyQ {
+    /// Comma-separated game ids that must be registered and active.
+    pub games: Option<String>,
+}
+
+/// F5: 200 when the node answers, the environment is registered at the
+/// configured version and each named game is active; 503 otherwise.
+async fn ready(AxState(st): AxState<Shared>, Query(q): Query<ReadyQ>) -> Response {
+    let games: Vec<String> = q.games.unwrap_or_default().split(',').map(str::trim).filter(|g| !g.is_empty()).map(str::to_string).collect();
+    let (ok, report) = crate::status::ready(&st, &games).await;
+    let code = if ok { StatusCode::OK } else { StatusCode::SERVICE_UNAVAILABLE };
+    (code, Json(report)).into_response()
 }
 
 async fn env_info(AxState(st): AxState<Shared>) -> Json<Json_> {

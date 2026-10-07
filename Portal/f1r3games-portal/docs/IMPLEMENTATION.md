@@ -154,3 +154,31 @@ Departures from the design, each forced by the stack:
   the generator is F1R3Score's exactly; checked against `score-chance`.
 * Sound is a synthesised stand-in, identical on every device, until a
   General MIDI sound set is cut and bundled.
+
+## Supervised by ign1t10n (7 October 2026)
+
+The work packages F1–F7 of *ign1t10n: macOS Installer Specification* v0.4,
+which runs this service as one of its supervised processes and serves the
+portal and the game clients to a stock browser at `http://localhost`:
+
+| WP | What | Where |
+|---|---|---|
+| F1 | Keys from the environment: `F1R3GAMES_SERVICE_KEY`, `F1R3GAMES_ENV_KEY`, `F1R3GAMES_TOKEN_SECRET`, `F1R3GAMES_GAME_KEY_<ID>`, `F1R3GAMES_COOP_KEY` (hex or key-file JSON), read before the configured files | `service/src/main.rs` (`key_from`, `game_key`) |
+| F2 | `[[origins]]`: each game client on listeners of its own, serving only `<dir>/<id>/` at `/<id>/`, with `frame-ancestors` (default: the origin of `portal_base_url`) and `nosniff` | `service/src/origins.rs` |
+| F3 | `games-manifests --entry ID=BASE` (repeatable) and `--only`; `register-games FILE [--only ID]` signing `games.register` with the Cooperative's key, skipping a game already registered with the same manifest, waiting until it reads back | `service/src/register.rs` |
+| F4 | `listen` may be a list (both loopback families); `public_host` is the only `Host` served, loopback literals at its port are redirected to it (308), anything else gets 421 | `service/src/hosts.rs` |
+| F5 | `GET /api/ready[?games=a,b]` (200 or 503 with reasons); `status` prints the portal and game environments' registered versions and each registration's entry and template hashes | `service/src/status.rs` |
+| F6 | The CLI runs headless with `F1R3GAMES_KEY` (one key, in memory, pinned to the live environment): `F1R3GAMES_KEY=… f1r3games -y beat epoch --nursery …` | `cli/src/main.rs` (`open_headless`) |
+| F7 | `validator_urls`: a random rotation per deploy, the next tried on a transport error | `node/src/lib.rs` (`with_validators`, `draw`) |
+
+`bootstrap --wait S` and `games-install --wait S [--only ID]` wait until the
+environments read back at the observer, so a supervisor can run them as
+jobs that finish when the work is on the chain.
+
+F6 departs from the specification's wording (`f1r3games-service
+beat-epoch`): making the CLI headless reuses the breeder code that
+`f1r3games beat verify` already checks, instead of a second copy.
+
+Tests: `crates/service/tests/install.rs` (install, register, ready and
+status against a verifying mock node with one validator unreachable; the
+`Host` allow-list; a game origin serving only its own files).

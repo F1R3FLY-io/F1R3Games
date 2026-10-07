@@ -21,7 +21,10 @@ pub enum NodeError {
 #[derive(Clone, Debug)]
 pub struct Node {
     http: reqwest::Client,
+    /// The first validator; with several (`with_validators`), one is drawn
+    /// per deploy and the others are tried if it cannot be reached.
     pub validator: String,
+    pub validators: Vec<String>,
     pub observer: String,
 }
 
@@ -56,11 +59,30 @@ async fn check(resp: reqwest::Response) -> Result<Json, NodeError> {
 
 impl Node {
     pub fn new(validator: impl Into<String>, observer: impl Into<String>) -> Node {
+        Node::with_validators(vec![validator.into()], observer)
+    }
+
+    /// Several validators (F7). Deploys go to one drawn at random; when it
+    /// cannot be reached (a transport error, not a refusal), the next is tried.
+    pub fn with_validators(validators: Vec<String>, observer: impl Into<String>) -> Node {
+        let validators: Vec<String> = validators.into_iter().map(|v| v.trim_end_matches('/').to_string()).filter(|v| !v.is_empty()).collect();
         Node {
             http: reqwest::Client::new(),
-            validator: validator.into().trim_end_matches('/').to_string(),
+            validator: validators.first().cloned().unwrap_or_default(),
+            validators,
             observer: observer.into().trim_end_matches('/').to_string(),
         }
+    }
+
+    /// The validators in the order to try them: a random rotation of the list.
+    pub fn draw(&self) -> Vec<String> {
+        let n = self.validators.len().max(1);
+        let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.subsec_nanos() as usize).unwrap_or(0);
+        let k = nanos % n;
+        let mut v = self.validators.clone();
+        let k = k.min(v.len());
+        v.rotate_left(k);
+        v
     }
 
     pub async fn status(&self, base: &str) -> Result<Json, NodeError> {
@@ -78,9 +100,20 @@ impl Node {
     /// it is refused as expired. `seqNumber` is kept only as a fallback for a
     /// node that does not serve `/api/blocks/{depth}`.
     pub async fn valid_after(&self) -> Result<i64, NodeError> {
-        let resp = self.http.get(format!("{}/api/blocks/1", self.validator)).send().await?;
+        let mut last = None;
+        for v in self.draw() {
+            match self.valid_after_at(&v).await {
+                Err(NodeError::Transport(e)) => last = Some(NodeError::Transport(e)),
+                other => return other,
+            }
+        }
+        Err(last.unwrap_or_else(|| NodeError::Shape("no validator configured".into())))
+    }
+
+    async fn valid_after_at(&self, validator: &str) -> Result<i64, NodeError> {
+        let resp = self.http.get(format!("{validator}/api/blocks/1")).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
-            let j = check(self.http.get(format!("{}/api/prepare-deploy", self.validator)).send().await?).await?;
+            let j = check(self.http.get(format!("{validator}/api/prepare-deploy")).send().await?).await?;
             return j.get("seqNumber").and_then(Json::as_i64).ok_or_else(|| NodeError::Shape(j.to_string()));
         }
         let j = check(resp).await?;
@@ -91,7 +124,21 @@ impl Node {
     /// The node answers `Success!\nDeployId is: <hex>`; the id is the
     /// signature we sent, so we return that and check the node echoed it.
     pub async fn deploy(&self, d: &SignedDeploy) -> Result<String, NodeError> {
-        let j = check(self.http.post(format!("{}/api/deploy", self.validator)).json(&d.to_json()).send().await?).await?;
+        let mut last = None;
+        for v in self.draw() {
+            match self.deploy_at(&v, d).await {
+                Err(NodeError::Transport(e)) => {
+                    tracing::warn!(validator = %v, error = %e, "validator unreachable; trying another");
+                    last = Some(NodeError::Transport(e))
+                }
+                other => return other,
+            }
+        }
+        Err(last.unwrap_or_else(|| NodeError::Shape("no validator configured".into())))
+    }
+
+    async fn deploy_at(&self, validator: &str, d: &SignedDeploy) -> Result<String, NodeError> {
+        let j = check(self.http.post(format!("{validator}/api/deploy")).json(&d.to_json()).send().await?).await?;
         let text = match &j {
             Json::String(s) => s.clone(),
             other => other.to_string(),
@@ -106,11 +153,18 @@ impl Node {
 
     /// `GET /api/deploy/{id}`: `None` while the deploy is not yet in a block.
     pub async fn find_deploy(&self, id: &str) -> Result<Option<Json>, NodeError> {
-        let r = self.http.get(format!("{}/api/deploy/{id}", self.validator)).send().await?;
-        if r.status().as_u16() == 404 {
-            return Ok(None);
+        let mut last = None;
+        for v in &self.validators {
+            match self.http.get(format!("{v}/api/deploy/{id}")).send().await {
+                Ok(r) if r.status().as_u16() == 404 => last = None,
+                Ok(r) => return check(r).await.map(Some),
+                Err(e) => last = Some(NodeError::Transport(e)),
+            }
         }
-        check(r).await.map(Some)
+        match last {
+            Some(e) => Err(e),
+            None => Ok(None),
+        }
     }
 
     /// Run a term read-only against the last finalized block at the observer.

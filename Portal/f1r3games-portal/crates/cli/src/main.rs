@@ -4,6 +4,12 @@
 //! State lives in `$F1R3GAMES_HOME` (default `~/.f1r3games`): the encrypted
 //! keystore, the encrypted contact book, and the pinned service settings.
 //! The passphrase is read from `F1R3GAMES_PASSPHRASE` or from stdin.
+//!
+//! Headless use (F6): with `F1R3GAMES_KEY` set (hex, or a key file's JSON),
+//! the CLI signs with that one key in an in-memory keystore pinned to the
+//! environment the service serves, and touches no files in
+//! `$F1R3GAMES_HOME`. ign1t10n runs the F1R3Beat breeder this way, with the
+//! key in the process's environment only.
 
 use anyhow::{anyhow, bail, Context, Result};
 use clap::{Parser, Subcommand};
@@ -249,8 +255,38 @@ fn save_keystore(ks: &Keystore) -> Result<()> {
     Ok(())
 }
 
+/// The key given in `F1R3GAMES_KEY`, if any.
+fn headless_key() -> Result<Option<k256::ecdsa::SigningKey>> {
+    match std::env::var("F1R3GAMES_KEY").ok().filter(|v| !v.trim().is_empty()) {
+        Some(v) => Ok(Some(f1r3games_core::keyfile::deserialize(v.trim()).map_err(|e| anyhow!("F1R3GAMES_KEY: {e}"))?)),
+        None => Ok(None),
+    }
+}
+
+/// A wallet holding only `key`, pinned to the live environment.
+async fn open_headless(client: Client, key: &k256::ecdsa::SigningKey, yes: bool) -> Result<Ctx> {
+    let live: Json = client.get("/api/env").await?;
+    let mut pw = [0u8; 32];
+    f1r3games_core::hash::random_bytes(&mut pw);
+    let pw = hex::encode(pw);
+    let (mut ks, u) = Keystore::create(&pw, 1_000);
+    let address = ks.add_key(&u, key, "headless")?;
+    ks.set_active(address.as_str())?;
+    let policy = Policy::new(
+        live["shardId"].as_str().unwrap_or("root"),
+        live["envUri"].as_str().ok_or_else(|| anyhow!("the service names no environment"))?,
+        1_000_000_000,
+    );
+    let mut wallet = Wallet::new(ks, policy);
+    wallet.unlock_with_passphrase(&pw)?;
+    Ok(Ctx { client, wallet, yes })
+}
+
 async fn open(cli: &Cli) -> Result<Ctx> {
     let client = Client { http: reqwest::Client::new(), base: cli.service.trim_end_matches('/').to_string() };
+    if let Some(k) = headless_key()? {
+        return open_headless(client, &k, cli.yes).await;
+    }
     let settings: Json = serde_json::from_str(&std::fs::read_to_string(settings_path()).context("run `f1r3games init` first")?)?;
     let ks = Keystore::from_json(&std::fs::read_to_string(keystore_path())?)?;
     let policy = Policy::new(

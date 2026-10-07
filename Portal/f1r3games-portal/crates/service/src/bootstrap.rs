@@ -96,3 +96,28 @@ pub async fn ensure_game_env(st: &State, game: &f1r3games_games::GameSpec, key: 
     tracing::info!(game = game.id, %uri, deploy = %id, "game environment deploy submitted");
     Ok(Some(id))
 }
+
+/// Wait until the portal environment is registered at the configured
+/// version (the probe at the observer), polling every two seconds.
+pub async fn wait_env(st: &State, wait: std::time::Duration) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    loop {
+        match registered_version(st).await {
+            Ok(Some(v)) if v >= st.config.env_version => return Ok(()),
+            r if t0.elapsed() >= wait => anyhow::bail!("the games environment is not registered at version {} after {}s (last: {r:?})", st.config.env_version, wait.as_secs()),
+            _ => tokio::time::sleep(std::time::Duration::from_secs(2)).await,
+        }
+    }
+}
+
+/// Wait until the environment at `uri` reports at least `version`.
+pub async fn wait_version_at(st: &State, uri: &str, version: i64, wait: std::time::Duration) -> anyhow::Result<()> {
+    let t0 = std::time::Instant::now();
+    loop {
+        match version_at(st, uri).await {
+            Ok(Some(v)) if v >= version => return Ok(()),
+            r if t0.elapsed() >= wait => anyhow::bail!("{uri} is not at version {version} after {}s (last: {r:?})", wait.as_secs()),
+            _ => tokio::time::sleep(std::time::Duration::from_secs(2)).await,
+        }
+    }
+}

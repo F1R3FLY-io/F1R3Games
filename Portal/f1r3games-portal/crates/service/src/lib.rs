@@ -15,7 +15,11 @@
 
 pub mod bootstrap;
 pub mod config;
+pub mod hosts;
+pub mod origins;
+pub mod register;
 pub mod routes;
+pub mod status;
 pub mod token;
 
 use f1r3games_core::{keyfile, registry, Address};
@@ -39,7 +43,7 @@ pub type Shared = Arc<State>;
 impl State {
     pub fn new(config: config::Config, service_key: SigningKey, env_key: SigningKey, token_secret: Vec<u8>) -> State {
         let env_uri = registry::uri_for_public_key(&keyfile::public_key_bytes(&env_key));
-        let node = Node::new(&config.validator_url, &config.observer_url);
+        let node = Node::with_validators(config.validators(), &config.observer_url);
         State { config, node, service_key, env_key, env_uri, token_secret }
     }
 
