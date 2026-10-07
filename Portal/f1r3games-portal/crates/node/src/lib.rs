@@ -67,9 +67,24 @@ impl Node {
         check(self.http.get(format!("{base}/api/status")).send().await?).await
     }
 
-    /// The validator's next sequence number, for `validAfterBlockNumber`
-    /// (`GET /api/prepare-deploy`).
+    /// The number of the latest block in the validator's DAG, for
+    /// `validAfterBlockNumber` (`GET /api/blocks/1`).
+    ///
+    /// The node admits a deploy only while `validAfterBlockNumber` is within
+    /// `deploy_lifespan` (50) of the next block's number, measured in DAG
+    /// block numbers. `prepare-deploy`'s `seqNumber` is the validator's own
+    /// message sequence number, which falls behind the block number once
+    /// several validators propose; after enough blocks every deploy built on
+    /// it is refused as expired. `seqNumber` is kept only as a fallback for a
+    /// node that does not serve `/api/blocks/{depth}`.
     pub async fn valid_after(&self) -> Result<i64, NodeError> {
+        if let Ok(resp) = self.http.get(format!("{}/api/blocks/1", self.validator)).send().await {
+            if let Ok(j) = check(resp).await {
+                if let Some(n) = j.as_array().and_then(|bs| bs.iter().filter_map(|b| b.get("blockNumber").and_then(Json::as_i64)).max()) {
+                    return Ok(n);
+                }
+            }
+        }
         let j = check(self.http.get(format!("{}/api/prepare-deploy", self.validator)).send().await?).await?;
         j.get("seqNumber").and_then(Json::as_i64).ok_or_else(|| NodeError::Shape(j.to_string()))
     }
