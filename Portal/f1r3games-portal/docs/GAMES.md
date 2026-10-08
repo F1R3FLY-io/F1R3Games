@@ -11,7 +11,7 @@ state behind an environment that checks membership against the portal.
 |---|---|---|---|---|
 | F1R3Pix | `seat(instance, pk, want)`; `paint(instance, colour)` (your own cell; names no cell); `say(instance, to, envelope)` | — (payments go through the portal's `payments.send`, always prompted) | `board`, `seats`, `log`, `mail`, `outbox` | canvas (whole game or a moment; body = encoded history) |
 | F1R3Beat | `seat(instance, pk, want)` (random, row or claim); `set(instance, note)` (your own cell: a pitch from its row's palette, or Nil); `listen(instance, bpm)`; `say(instance, to, envelope)` | `setBreeder(address)` (F1R3Beat's key only); `epoch(epoch, record)` (the breeder only) | `grid`, `seats`, `log`, `mail`, `outbox`, `population`, `epochRecord`, `member` | pattern (the grid at a block as its canonical F1R3Score score; bred by the breeder), session (body = encoded history) |
-| F1R3Ink | `tags(instance, tags)`; `ink(instance, target, colour)` | — | `state` (tags and inks per player) | round |
+| F1R3Ink | `enter(instance, pk, flag)`; `tags(instance, tags)`; `visibility(instance, flag, keys)`; `ink(instance, target, ink)` (your own stripe on `target`: a palette index in the clear, a sealed envelope, or Nil to lift); `veil(instance, sids)`; `say(instance, to, envelope)`; `close(instance)` | `setRelay(address)` (F1R3Ink's key only); `relayInk(instance, batch)` and `relayReveal(instance, target, handle, address)` (the relay only) | `players`, `flags`, `history`, `log`, `mail`, `outbox` | round (body = encoded history), flag (a portrait: one flag, with the keys it discloses) |
 | F1R3SideChat | `addCharacter`, `takeWheel`, `release`, `addChapter`, `write(instance, chapter, charId, text)` as the character you drive, `comment` (any keyholder) | `meta`, `publishChapter` (host) | `state`, `chapter` (anyone: reader tier) | story |
 | F1R3Skein | `setScale`, `setDistribution(instance, "pitch"\|"duration", machine)`, `perform(instance, device)` | — | `session` | performance, tune (cross-linked; tune header `parents`) |
 
@@ -72,6 +72,36 @@ client's launch default is `{capacity: 61, seating: "random", palette: Nil, mess
 
 Manifests now carry `capabilities` (F1R3Pix: `["pay", "open"]`); the host
 refuses capability methods a game did not declare. Host protocol is 2.
+
+## F1R3Ink's relay
+
+Anonymous ink needs someone other than the inker to deploy it (F1R3Ink design
+§8). The service runs that relay when `[relay]` is enabled: the Portal shell
+signs a player's request under `f1r3games/relay/v1`, naming the game, the
+instance and the relay URL from the manifest; the relay checks it against the
+round and submits the window's inks as one shuffled `f1r3ink.relayInk`,
+signed by the relay key, which also pays for them.
+
+```sh
+f1r3games-service relay-keygen --dir .     # relay-key.json, relay-secret.hex; prints the address
+# f1r3games.toml:
+#   [relay]
+#   enabled = true
+#   base_url = "https://<portal>/api/relay"   # the same base given to games-manifests --relay-base
+#   key_file = "relay-key.json"               # or F1R3GAMES_RELAY_KEY
+#   secret_file = "relay-secret.hex"          # or F1R3GAMES_RELAY_SECRET
+#   window_blocks = 3                          # one batch per three blocks
+#   per_hour = 30                              # relayed requests per player per hour
+f1r3games-service games-manifests --keys game-keys --entry-base <base> --relay-base https://<portal>/api/relay --out manifests.json
+# With F1R3Ink's environment key imported and active:
+f1r3games ink set-relay <relay address>
+```
+
+Fund the relay's address. The relay keeps nothing durable: handles are an
+HMAC of the secret, the queue and the limits are in memory, and a restart
+loses at most one window, which the inkers' clients report as never landed.
+The relay is trusted (design D10): it learns who inks whom, and cannot read a
+sealed colour or forge an ink.
 
 ## F1R3Beat's breeder
 

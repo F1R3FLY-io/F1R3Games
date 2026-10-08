@@ -155,6 +155,45 @@ Departures from the design, each forced by the stack:
 * Sound is a synthesised stand-in, identical on every device, until a
   General MIDI sound set is cut and bundled.
 
+## F1R3Ink (design v1, 8 October 2026)
+
+* `templates/games/f1r3ink.rho` — the game environment: `enter`, `tags`,
+  `visibility`, `ink`, `veil`, `say`, `close`; the relay's `relayInk` and
+  `relayReveal`; `setRelay`; reads `players`, `flags`, `history`, `log`,
+  `mail`, `outbox`. Decay and pacing run on the block's timestamp
+  (`rho:block:data`), never the deploy's. Parses, normalises and runs a
+  61-step scenario in F1R3Node-Rust's interpreter.
+* `crates/games/src/ink.rs` — configuration, decay, relay handles, history
+  order and the `round` and `flag` bodies, held to `F1R3Ink/vectors`.
+* `crates/wallet` — version 2 envelopes for sealed inks (unlabelled wraps,
+  the additional data binding target, stripe and sequence); `open` answers
+  `{kind: "ink", target, sid, seq, colour, key}`; `signRelay`.
+* `crates/core/src/relay.rs`, `crates/service/src/relay.rs` — signed relay
+  requests and the relay (`POST /api/relay/{game}`, `relay-keygen`,
+  `games-manifests --relay-base`); explore answers carry `blockTimestamp`.
+* `crates/cli` — `f1r3games ink set-relay`.
+* Host protocol 2 gains the declared capability `relay`: the shell signs
+  `{v, game, instance, relay, op, params, address, at}` and posts it only to
+  the relay the registered manifest names. Manifests of games declaring it
+  carry `relay`.
+
+Departures from the design, each forced by the stack or found in testing:
+
+* The round's close is recorded by the game environment (`close`, write-once
+  `closedAt`, sent by the first participant's client to see the instance
+  closed) rather than by a new `statusAt` record in the Portal environment:
+  upgrading the Portal environment re-initialises its state.
+* A sealed ink is at most 512 bytes, not 320: the envelope carries its target
+  and stripe id in the clear (for `inspectInk` and for checking a disclosed
+  key), which makes it about 330 bytes.
+* Body encoding: the start time is a u64 of milliseconds and the decay a u16
+  of steps and a u32 unit; addresses are length-prefixed UTF-8 (F1R3Cap
+  addresses are not 20 bytes) and indexes are varints.
+* The relay's window is measured by polling the validators' latest block
+  number; the relay queue and limits live in memory.
+* `relay` needs a live launch allowance for the instance, as play does, but
+  spends none of it: the relay pays the phlo.
+
 ## Supervised by ign1t10n (7 October 2026)
 
 The work packages F1–F7 of *ign1t10n: macOS Installer Specification* v0.4,

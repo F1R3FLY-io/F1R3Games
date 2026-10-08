@@ -1,0 +1,31 @@
+{
+  "name": "f1r3ink-client",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "F1R3Ink game client: framed by the F1R3Games Portal, played against the F1R3Ink environment on a F1R3Node-Rust shard.",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "vectors": "node scripts/make-vectors.mjs"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^1.3.0",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^25.0.1",
+    "vite": "^5.4.21",
+    "vitest": "^2.1.9"
+  }
+}
