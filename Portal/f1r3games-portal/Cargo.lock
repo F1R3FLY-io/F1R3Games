@@ -509,8 +509,10 @@ dependencies = [
  "f1r3games-core",
  "f1r3games-wallet",
  "hex",
+ "hmac",
  "k256",
  "serde_json",
+ "sha2",
  "thiserror",
 ]
 

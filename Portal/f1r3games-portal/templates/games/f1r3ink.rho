@@ -1,72 +1,1037 @@
-            // F1R3Ink: players describe themselves with tags and ink one another
-            // with colours. Inks received are kept under (instance, "inks",
-            // target), tags under (instance, "tags", player).
+            // F1R3Ink (design v1, 8 October 2026): players ink one another with
+            // colours from the round's palette. Each inker owns one stripe on each
+            // person they ink; inking again changes its colour or refreshes it
+            // (D3), and Nil lifts it. A flag is public (inks in the clear) or
+            // private (inks sealed to the owner and the inker, design §7); the
+            // environment refuses an ink whose form does not match the target's
+            // flag at the block it lands in (D1). Anonymous stripes are written
+            // only by the relay named with setRelay (§8, D10). Stripes are stamped
+            // with the block's number and timestamp, never the deploy's, so decay
+            // (D5) runs on a clock the inker does not choose.
+            //
+            // State, all scoped by instance (design §6.2):
+            //   ("roster", i)       [a, ...] everyone who has entered, in order (written at enter)
+            //   ("p", i, a)         {"pk", "flag", "tags", "veil", "at": [h, t]}           by a
+            //   ("plog", i, a)      [[h, t, "flag"|"tags"|"veil", v], ...]                  by a
+            //   ("disc", i, a)      [[sid, seq, K], ...] content keys disclosed going public by a
+            //   ("s", i, b, sid)    {"sid", "by": a | Nil, "first", "last", "seq", "ink"}  by the inker, or the relay
+            //   ("sh", i, b, sid)   [[h, t, ink], ...]                                       by the inker, or the relay
+            //   ("o", i, a)         Set(target, ...) the targets a has inked                 by a
+            //   ("o", i, "relay")   {target: Set(handle, ...)}                               by the relay
+            //   ("rlog", i)         [[h, t, target, handle, address], ...] reveals            by the relay
+            //   ("out", i, a)       sealed messages, as F1R3Pix                              by a
+            //   ("closedAt", i)     [h, t] the block that first saw the round closed (D5)
+            //   "relay"             the relay's address, named by the holder of this game's key
+            // A stripe id (sid) is the inker's address for an attributed stripe and
+            // ["anon", handle] for an anonymous one. An ink is {"c": n} (palette
+            // index, clear), {"sealed": bytes} or Nil (lifted).
+            // Lists have no `contains` on F1R3Node-Rust: membership is tested with
+            // `.toSet().contains(x)`. Nil is dropped from lists in the node's JSON,
+            // so readers treat a missing last element of a history or log entry as
+            // Nil (a lift).
+            new blockData(`rho:block:data`),
+                clock, operator, cfgOf, hexDigits, validColour, validPalette, decayOk,
+                isPlayer, allEntered, appendTo, addTarget, addHandle, tagsOk, keysOk, inkOk,
+                writeStripe, relayBatch, enteredCount,
+                collectPlayers, stripesOf, stripesBy, anonStripes, discOf,
+                logPlayers, logStripes, logHist, logPlog, filterMail, mailFrom, filterOut
+            in {
 
-            contract env(@"tags", @instance, @tags, ret) = {
-              new whoCh, mCh, ack in {
-                who!(*whoCh) |
-                for (@by, _ <- whoCh) {
-                  member!(instance, by, *mCh) |
-                  for (@isIn <- mCh) {
-                    if (not isIn) { ret!((false, "join the instance first")) }
-                    else { if (tags.length() > 12) { ret!((false, "at most 12 tags")) }
-                    else {
-                      TreeHashMap!("set", state, (instance, "tags", by), tags, *ack) |
-                      for (_ <- ack) { ret!((true, tags)) }
-                    } }
-                  }
+              // ------------------------------------------------ helpers
+
+              // (block number, block timestamp in ms): the shard's clock, which the inker does not choose.
+              contract clock(ret) = {
+                new bd in { blockData!(*bd) | for (@n, @t, _ <- bd) { ret!(n, t) } }
+              } |
+
+              // The address of this game's key: it alone may name the relay.
+              contract operator(ret) = { vaultAddress!("fromPublicKey", {{public_key}}, *ret) } |
+
+              contract hexDigits(@s, @i, ret) = {
+                if (i >= s.length()) { ret!(true) }
+                else {
+                  if (Set("0","1","2","3","4","5","6","7","8","9","A","B","C","D","E","F").contains(s.slice(i, i + 1))) {
+                    hexDigits!(s, i + 1, *ret)
+                  } else { ret!(false) }
                 }
-              }
-            } |
+              } |
 
-            contract env(@"ink", @instance, @target, @colour, ret) = {
-              new whoCh, mCh, tCh, lCh, ack in {
-                who!(*whoCh) |
-                for (@from, @ts <- whoCh) {
-                  member!(instance, from, *mCh) |
-                  member!(instance, target, *tCh) |
-                  for (@fromIn <- mCh & @targetIn <- tCh) {
-                    if (not fromIn) { ret!((false, "join the instance first")) }
-                    else { if (not targetIn) { ret!((false, "you can only ink players in this instance")) }
-                    else { if (from == target) { ret!((false, "you cannot ink yourself")) }
-                    else { if (colour.length() != 7 or colour.slice(0, 1) != "#") { ret!((false, "colour must be #RRGGBB")) }
+              // "#RRGGBB", upper-case hex.
+              contract validColour(@c, ret) = {
+                match c {
+                  s /\ String => {
+                    if (s.length() != 7) { ret!(false) }
+                    else { if (s.slice(0, 1) != "#") { ret!(false) }
+                    else { hexDigits!(s, 1, *ret) } }
+                  }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // The round's palette (D4): 2 to 32 distinct colours.
+              contract validPalette(@p, ret) = {
+                match p {
+                  [_, _ ...rest] => {
+                    if (p.length() > 32 or p.toSet().size() != p.length()) { ret!(false) }
                     else {
-                      TreeHashMap!("get", state, (instance, "inks", target), *lCh) |
-                      for (@inks <- lCh) {
-                        match inks {
-                          Nil => { TreeHashMap!("set", state, (instance, "inks", target), [{"from": from, "colour": colour, "at": ts}], *ack) }
-                          _ => { TreeHashMap!("set", state, (instance, "inks", target), inks ++ [{"from": from, "colour": colour, "at": ts}], *ack) }
+                      new loop in {
+                        contract loop(@xs) = {
+                          match xs {
+                            [] => { ret!(true) }
+                            [c ...more] => {
+                              new vCh in {
+                                validColour!(c, *vCh) |
+                                for (@ok <- vCh) { if (ok) { loop!(more) } else { ret!(false) } }
+                              }
+                            }
+                          }
                         } |
-                        for (_ <- ack) { ret!((true, target)) }
+                        loop!(p)
                       }
-                    } } } }
+                    }
+                  }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // Decay (D5): Nil (none) or {"unit": ms, "steps": k}.
+              contract decayOk(@d, ret) = {
+                match d {
+                  Nil => { ret!(true) }
+                  {"unit": u /\ Int, "steps": k /\ Int} => { ret!(u >= 1000 and k >= 1 and k <= 1000) }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // The instance and its validated configuration (R1: no defaults).
+              // Answers (true, cfg, inst) or (false, reason, Nil).
+              contract cfgOf(@instance, ret) = {
+                new iCh in {
+                  instanceOf!(instance, *iCh) |
+                  for (@inst <- iCh) {
+                    if (inst == Nil) { ret!(false, "unknown instance", Nil) }
+                    else {
+                      match inst.get("config") {
+                        {"capacity": cap /\ Int, "palette": palette, "decay": decay, "minInterval": gap /\ Int,
+                         "anonymous": anon /\ Bool, "anonMin": anonMin /\ Int, "reciprocity": recip /\ Bool,
+                         "messageLimit": limit /\ Int} => {
+                          if (cap < 3 or cap > 64 or gap < 0 or gap > 86400000 or anonMin < 3 or anonMin > 64
+                              or limit < 1 or limit > 65536) { ret!(false, "bad config", Nil) }
+                          else {
+                            new pCh, dCh in {
+                              validPalette!(palette, *pCh) | decayOk!(decay, *dCh) |
+                              for (@pOk <- pCh & @dOk <- dCh) {
+                                if (not pOk or not dOk) { ret!(false, "bad config", Nil) }
+                                else {
+                                  ret!(true, {"capacity": cap, "palette": palette, "decay": decay, "minInterval": gap,
+                                              "anonymous": anon, "anonMin": anonMin, "reciprocity": recip,
+                                              "messageLimit": limit}, inst)
+                                }
+                              }
+                            }
+                          }
+                        }
+                        _ => { ret!(false, "bad config", Nil) }
+                      }
+                    }
                   }
                 }
-              }
-            } |
+              } |
 
-            // Per player: their tags and the inks they have received.
-            contract env(@"state", @instance, ret) = {
-              new pCh, collect in {
-                participants!(instance, *pCh) |
-                for (@players <- pCh) {
-                  contract collect(@ps, @acc, done) = {
-                    match ps {
-                      [] => { done!(acc) }
-                      [p ...rest] => {
-                        new tCh, iCh in {
-                          TreeHashMap!("get", state, (instance, "tags", p), *tCh) |
-                          TreeHashMap!("get", state, (instance, "inks", p), *iCh) |
-                          for (@tags <- tCh & @inks <- iCh) {
-                            collect!(rest, acc.set(p, {"tags": tags, "inks": inks}), *done)
+              // A participant who has entered: their record, or Nil.
+              contract isPlayer(@instance, @inst, @a, ret) = {
+                if (not inst.get("participants").contains(a)) { ret!(Nil) }
+                else { TreeHashMap!("get", state, ("p", instance, a), *ret) }
+              } |
+
+              // Every address in `to` has entered.
+              contract allEntered(@instance, @to, ret) = {
+                match to {
+                  [] => { ret!(true) }
+                  [a ...rest] => {
+                    new pCh in {
+                      TreeHashMap!("get", state, ("p", instance, a), *pCh) |
+                      for (@p <- pCh) { if (p == Nil) { ret!(false) } else { allEntered!(instance, rest, *ret) } }
+                    }
+                  }
+                }
+              } |
+
+              // How many of the roster are still participants.
+              contract enteredCount(@roster, @participants, @n, ret) = {
+                match roster {
+                  [] => { ret!(n) }
+                  [a ...rest] => { if (participants.contains(a)) { enteredCount!(rest, participants, n + 1, *ret) } else { enteredCount!(rest, participants, n, *ret) } }
+                }
+              } |
+
+              // Append `item` to the list at `key`; answers the index it took.
+              contract appendTo(@key, @item, ret) = {
+                new lCh, ack in {
+                  TreeHashMap!("get", state, key, *lCh) |
+                  for (@l <- lCh) {
+                    match l {
+                      Nil => { TreeHashMap!("set", state, key, [item], *ack) | for (_ <- ack) { ret!(0) } }
+                      _ => { TreeHashMap!("set", state, key, l ++ [item], *ack) | for (_ <- ack) { ret!(l.length()) } }
+                    }
+                  }
+                }
+              } |
+
+              contract addTarget(@key, @target, ret) = {
+                new sCh in {
+                  TreeHashMap!("get", state, key, *sCh) |
+                  for (@s <- sCh) {
+                    match s {
+                      Nil => { TreeHashMap!("set", state, key, Set(target), *ret) }
+                      _ => { if (s.contains(target)) { ret!(Nil) } else { TreeHashMap!("set", state, key, s.add(target), *ret) } }
+                    }
+                  }
+                }
+              } |
+
+              contract addHandle(@instance, @target, @handle, ret) = {
+                new mCh in {
+                  TreeHashMap!("get", state, ("o", instance, "relay"), *mCh) |
+                  for (@m <- mCh) {
+                    match m {
+                      Nil => { TreeHashMap!("set", state, ("o", instance, "relay"), {target: Set(handle)}, *ret) }
+                      _ => { TreeHashMap!("set", state, ("o", instance, "relay"), m.set(target, m.getOrElse(target, Set()).add(handle)), *ret) }
+                    }
+                  }
+                }
+              } |
+
+              // At most 12 tags, each 1 to 24 characters.
+              contract tagsOk(@tags, ret) = {
+                match tags {
+                  [] => { ret!(true) }
+                  [_ ...rest] => {
+                    if (tags.length() > 12) { ret!(false) }
+                    else {
+                      new loop in {
+                        contract loop(@xs) = {
+                          match xs {
+                            [] => { ret!(true) }
+                            [t /\ String ...more] => { if (t.length() < 1 or t.length() > 24) { ret!(false) } else { loop!(more) } }
+                            _ => { ret!(false) }
+                          }
+                        } |
+                        loop!(tags)
+                      }
+                    }
+                  }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // Disclosed content keys: [[sid, seq, K (32 bytes)], ...].
+              contract keysOk(@keys, ret) = {
+                match keys {
+                  [] => { ret!(true) }
+                  [[_, q /\ Int, k /\ ByteArray] ...rest] => { if (q < 1 or k.length() != 32) { ret!(false) } else { keysOk!(rest, *ret) } }
+                  _ => { ret!(false) }
+                }
+              } |
+
+              // Does `ink` have the form the target's flag requires (D1)?
+              contract inkOk(@cfg, @flag, @ink, ret) = {
+                match ink {
+                  Nil => { ret!(true, "") }
+                  {"c": n /\ Int} => {
+                    if (flag != "public") { ret!(false, "that flag is private: the ink must be sealed") }
+                    else { if (n < 0 or n >= cfg.get("palette").length()) { ret!(false, "not a colour of this round's palette") }
+                    else { ret!(true, "") } }
+                  }
+                  {"sealed": b /\ ByteArray} => {
+                    if (flag != "private") { ret!(false, "that flag is public: the ink must be in the clear") }
+                    else { if (b.length() > 512) { ret!(false, "sealed ink too long") }
+                    else { ret!(true, "") } }
+                  }
+                  _ => { ret!(false, "an ink is a palette index, a sealed envelope, or Nil") }
+                }
+              } |
+
+              // Set a stripe, keeping its location, and append to its history (D3, D9).
+              contract writeStripe(@instance, @target, @sid, @by, @ink, @gap, ret) = {
+                new cCh, sCh, a1, a2 in {
+                  clock!(*cCh) |
+                  TreeHashMap!("get", state, ("s", instance, target, sid), *sCh) |
+                  for (@h, @t <- cCh & @stripe <- sCh) {
+                    match stripe {
+                      Nil => {
+                        if (ink == Nil) { ret!((false, "nothing to lift")) }
+                        else {
+                          TreeHashMap!("set", state, ("s", instance, target, sid),
+                            {"sid": sid, "by": by, "first": [h, t], "last": [h, t], "seq": 1, "ink": ink}, *a1) |
+                          appendTo!(("sh", instance, target, sid), [h, t, ink], *a2) |
+                          for (_ <- a1 & _ <- a2) { ret!((true, {"sid": sid, "seq": 1, "h": h, "t": t})) }
+                        }
+                      }
+                      _ => {
+                        if (t < stripe.get("last").nth(1) + gap) { ret!((false, "too soon")) }
+                        else {
+                          TreeHashMap!("set", state, ("s", instance, target, sid),
+                            stripe.set("last", [h, t]).set("seq", stripe.get("seq") + 1).set("ink", ink), *a1) |
+                          appendTo!(("sh", instance, target, sid), [h, t, ink], *a2) |
+                          for (_ <- a1 & _ <- a2) { ret!((true, {"sid": sid, "seq": stripe.get("seq") + 1, "h": h, "t": t})) }
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ moves (play templates)
+
+              // enter(instance, pk, flag): register the caller's sealing key and their
+              // flag's visibility. pk is checked against the caller's address.
+              contract env(@"enter", @instance, @pk, @flag, ret) = {
+                new whoCh, cCh, aCh, pCh, rCh, kCh, a1, a2, a3 in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else { if (not Set("public", "private").contains(flag)) { ret!((false, "a flag is public or private")) }
+                      else {
+                        match pk {
+                          key /\ ByteArray => {
+                            vaultAddress!("fromPublicKey", key, *aCh) |
+                            for (@owner <- aCh) {
+                              if (owner != by) { ret!((false, "public key is not the caller's")) }
+                              else {
+                                TreeHashMap!("get", state, ("p", instance, by), *pCh) |
+                                TreeHashMap!("get", state, ("roster", instance), *rCh) |
+                                for (@p <- pCh & @roster <- rCh) {
+                                  if (p != Nil) { ret!((true, p)) }
+                                  else {
+                                    match roster { Nil => { kCh!([]) } r => { kCh!(r) } } |
+                                    for (@r <- kCh) {
+                                      if (r.length() >= cfg.get("capacity")) { ret!((false, "full")) }
+                                      else {
+                                        new tCh in {
+                                          clock!(*tCh) |
+                                          for (@h, @t <- tCh) {
+                                            TreeHashMap!("set", state, ("p", instance, by),
+                                              {"pk": key, "flag": flag, "tags": [], "veil": [], "at": [h, t]}, *a1) |
+                                            TreeHashMap!("set", state, ("roster", instance), r ++ [by], *a2) |
+                                            appendTo!(("plog", instance, by), [h, t, "flag", flag], *a3) |
+                                            for (_ <- a1 & _ <- a2 & _ <- a3) {
+                                              ret!((true, {"pk": key, "flag": flag, "tags": [], "veil": [], "at": [h, t]}))
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                          _ => { ret!((false, "pk must be the caller's public key")) }
+                        }
+                      } } } }
+                    }
+                  }
+                }
+              } |
+
+              // tags(instance, tags): the caller describes themselves (at most 12 tags).
+              contract env(@"tags", @instance, @tags, ret) = {
+                new whoCh, cCh, pCh, vCh, tCh, a1, a2 in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        isPlayer!(instance, inst, by, *pCh) |
+                        tagsOk!(tags, *vCh) |
+                        for (@p <- pCh & @valid <- vCh) {
+                          if (p == Nil) { ret!((false, "enter the game first")) }
+                          else { if (not valid) { ret!((false, "at most 12 tags, each 1 to 24 characters")) }
+                          else {
+                            clock!(*tCh) |
+                            for (@h, @t <- tCh) {
+                              TreeHashMap!("set", state, ("p", instance, by), p.set("tags", tags), *a1) |
+                              appendTo!(("plog", instance, by), [h, t, "tags", tags], *a2) |
+                              for (_ <- a1 & _ <- a2) { ret!((true, tags)) }
+                            }
+                          } }
+                        }
+                      } }
+                    }
+                  }
+                }
+              } |
+
+              // visibility(instance, flag, keys): public or private (D1). Going public
+              // discloses the content key of each stripe's current sealed ink; going
+              // private takes Nil or []. The environment cannot check the keys; every
+              // client checks them against their envelopes (design §7).
+              contract env(@"visibility", @instance, @flag, @keys, ret) = {
+                new whoCh, cCh, pCh, kCh, tCh, a1, a2, a3 in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else { if (not Set("public", "private").contains(flag)) { ret!((false, "a flag is public or private")) }
+                      else {
+                        isPlayer!(instance, inst, by, *pCh) |
+                        match [flag, keys] {
+                          ["private", Nil] => { kCh!(true, []) }
+                          ["private", []] => { kCh!(true, []) }
+                          ["public", Nil] => { kCh!(true, []) }
+                          ["public", ks] => { new vCh in { keysOk!(ks, *vCh) | for (@v <- vCh) { kCh!(v, ks) } } }
+                          _ => { kCh!(false, []) }
+                        } |
+                        for (@p <- pCh & @kOk, @ks <- kCh) {
+                          if (p == Nil) { ret!((false, "enter the game first")) }
+                          else { if (not kOk) { ret!((false, "keys are [[sid, seq, 32-byte key], ...], and only when going public")) }
+                          else {
+                            clock!(*tCh) |
+                            for (@h, @t <- tCh) {
+                              TreeHashMap!("set", state, ("p", instance, by), p.set("flag", flag), *a1) |
+                              appendTo!(("plog", instance, by), [h, t, "flag", flag], *a2) |
+                              if (ks == []) { a3!(Nil) }
+                              else {
+                                new dCh in {
+                                  TreeHashMap!("get", state, ("disc", instance, by), *dCh) |
+                                  for (@d <- dCh) {
+                                    match d {
+                                      Nil => { TreeHashMap!("set", state, ("disc", instance, by), ks, *a3) }
+                                      _ => { TreeHashMap!("set", state, ("disc", instance, by), d ++ ks, *a3) }
+                                    }
+                                  }
+                                }
+                              } |
+                              for (_ <- a1 & _ <- a2 & _ <- a3) { ret!((true, flag)) }
+                            }
+                          } }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // ink(instance, target, ink): the caller's attributed stripe on target (D2, D3).
+              contract env(@"ink", @instance, @target, @ink, ret) = {
+                new whoCh, cCh, bCh, tCh, iCh, sCh, ack in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (inst.get("status") != "active") { ret!((false, "the round is not active")) }
+                      else { if (by == target) { ret!((false, "you cannot ink yourself")) }
+                      else {
+                        isPlayer!(instance, inst, by, *bCh) |
+                        isPlayer!(instance, inst, target, *tCh) |
+                        for (@me <- bCh & @them <- tCh) {
+                          if (me == Nil) { ret!((false, "enter the game first")) }
+                          else { if (them == Nil) { ret!((false, "you can only ink players in this round")) }
+                          else {
+                            inkOk!(cfg, them.get("flag"), ink, *iCh) |
+                            for (@valid, @why <- iCh) {
+                              if (not valid) { ret!((false, why)) }
+                              else {
+                                writeStripe!(instance, target, by, by, ink, cfg.get("minInterval"), *sCh) |
+                                for (@r <- sCh) {
+                                  match r {
+                                    (true, _) => { addTarget!(("o", instance, by), target, *ack) | for (_ <- ack) { ret!(r) } }
+                                    _ => { ret!(r) }
+                                  }
+                                }
+                              }
+                            }
+                          } }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // veil(instance, sids): stripes on the caller's own public flag that
+              // clients hide from other players (D15). Their colours stay on the chain.
+              contract env(@"veil", @instance, @sids, ret) = {
+                new whoCh, cCh, pCh, tCh, a1, a2 in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        isPlayer!(instance, inst, by, *pCh) |
+                        for (@p <- pCh) {
+                          if (p == Nil) { ret!((false, "enter the game first")) }
+                          else {
+                            match sids {
+                              [] => { tCh!(true) }
+                              [_ ...rest] => { tCh!(sids.length() <= 128) }
+                              _ => { tCh!(false) }
+                            } |
+                            for (@valid <- tCh) {
+                              if (not valid) { ret!((false, "sids must be a list of at most 128 stripe ids")) }
+                              else {
+                                new kCh in {
+                                  clock!(*kCh) |
+                                  for (@h, @t <- kCh) {
+                                    TreeHashMap!("set", state, ("p", instance, by), p.set("veil", sids), *a1) |
+                                    appendTo!(("plog", instance, by), [h, t, "veil", sids], *a2) |
+                                    for (_ <- a1 & _ <- a2) { ret!((true, sids)) }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      } }
+                    }
+                  }
+                }
+              } |
+
+              // say(instance, to, envelope): as F1R3Pix, to entered players.
+              contract env(@"say", @instance, @to, @envelope, ret) = {
+                new whoCh, cCh, sCh, kCh in {
+                  who!(*whoCh) |
+                  for (@by, @ts <- whoCh) {
+                    cfgOf!(instance, *cCh) |
+                    for (@ok, @cfg, @inst <- cCh) {
+                      if (not ok) { ret!((false, cfg)) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else { if (inst.get("status") == "closed") { ret!((false, "instance is closed")) }
+                      else {
+                        match [to, envelope] {
+                          [rcpts, env /\ ByteArray] => {
+                            if (rcpts.length() < 1 or rcpts.length() > 64 or rcpts.toSet().size() != rcpts.length()
+                                or rcpts.toSet().contains(by)) { ret!((false, "recipients must be 1 to 64 distinct other players")) }
+                            else { if (env.length() > cfg.get("messageLimit")) { ret!((false, "message too long")) }
+                            else {
+                              allEntered!(instance, rcpts, *sCh) |
+                              for (@entered <- sCh) {
+                                if (not entered) { ret!((false, "every recipient must have entered the game")) }
+                                else {
+                                  clock!(*kCh) |
+                                  for (@h, _ <- kCh) {
+                                    new aCh in {
+                                      appendTo!(("out", instance, by), {"to": rcpts, "env": env, "at": ts, "h": h}, *aCh) |
+                                      for (@seq <- aCh) { ret!((true, seq)) }
+                                    }
+                                  }
+                                }
+                              }
+                            } }
+                          }
+                          _ => { ret!((false, "to must be a list of addresses and envelope bytes")) }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // close(instance): record the block that first saw the round closed, so
+              // every reader stops decay at the same moment (D5). Any participant may
+              // call it once the host has closed the instance; the first call stands.
+              contract env(@"close", @instance, ret) = {
+                new whoCh, iCh, cCh, kCh, ack in {
+                  who!(*whoCh) |
+                  for (@by, _ <- whoCh) {
+                    instanceOf!(instance, *iCh) |
+                    for (@inst <- iCh) {
+                      if (inst == Nil) { ret!((false, "unknown instance")) }
+                      else { if (inst.get("status") != "closed") { ret!((false, "the round is not closed")) }
+                      else { if (not inst.get("participants").contains(by)) { ret!((false, "join the instance first")) }
+                      else {
+                        TreeHashMap!("get", state, ("closedAt", instance), *cCh) |
+                        for (@at <- cCh) {
+                          if (at != Nil) { ret!((true, at)) }
+                          else {
+                            clock!(*kCh) |
+                            for (@h, @t <- kCh) {
+                              TreeHashMap!("set", state, ("closedAt", instance), [h, t], *ack) |
+                              for (_ <- ack) { ret!((true, [h, t])) }
+                            }
+                          }
+                        }
+                      } } }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ the relay (§8)
+
+              // setRelay(address): only the holder of this game's key may name the relay.
+              contract env(@"setRelay", @address, ret) = {
+                new whoCh, oCh, ack in {
+                  who!(*whoCh) | operator!(*oCh) |
+                  for (@by, _ <- whoCh & @op <- oCh) {
+                    if (by != op) { ret!((false, "only the holder of the F1R3Ink key may name the relay")) }
+                    else {
+                      match address {
+                        a /\ String => { TreeHashMap!("set", state, "relay", a, *ack) | for (_ <- ack) { ret!((true, a)) } }
+                        _ => { ret!((false, "address must be a string")) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // One entry of a relayed batch: [target, handle, ink].
+              contract relayBatch(@instance, @inst, @cfg, @entries, @acc, ret) = {
+                match entries {
+                  [] => { ret!(acc) }
+                  [[target, handle /\ String, ink] ...rest] => {
+                    new tCh, iCh, sCh, ack in {
+                      isPlayer!(instance, inst, target, *tCh) |
+                      for (@them <- tCh) {
+                        if (them == Nil) { relayBatch!(instance, inst, cfg, rest, acc ++ [(false, "not a player in this round")], *ret) }
+                        else {
+                          inkOk!(cfg, them.get("flag"), ink, *iCh) |
+                          for (@valid, @why <- iCh) {
+                            if (not valid) { relayBatch!(instance, inst, cfg, rest, acc ++ [(false, why)], *ret) }
+                            else {
+                              writeStripe!(instance, target, ["anon", handle], Nil, ink, cfg.get("minInterval"), *sCh) |
+                              for (@r <- sCh) {
+                                match r {
+                                  (true, _) => { addHandle!(instance, target, handle, *ack) | for (_ <- ack) { relayBatch!(instance, inst, cfg, rest, acc ++ [r], *ret) } }
+                                  _ => { relayBatch!(instance, inst, cfg, rest, acc ++ [r], *ret) }
+                                }
+                              }
+                            }
                           }
                         }
                       }
                     }
-                  } |
-                  new dCh in {
-                    collect!(players, {}, *dCh) |
-                    for (@all <- dCh) { ret!((true, all)) }
+                  }
+                  [_ ...rest] => { relayBatch!(instance, inst, cfg, rest, acc ++ [(false, "an entry is [target, handle, ink]")], *ret) }
+                }
+              } |
+
+              // relayInk(instance, batch): anonymous inks, deployed by the relay (D2, D10).
+              // The relay has checked each inker's signature and participation.
+              contract env(@"relayInk", @instance, @batch, ret) = {
+                new whoCh, rCh, cCh, kCh, nCh, bCh in {
+                  who!(*whoCh) |
+                  TreeHashMap!("get", state, "relay", *rCh) |
+                  for (@by, _ <- whoCh & @relay <- rCh) {
+                    if (relay == Nil or by != relay) { ret!((false, "only the relay may write anonymous stripes")) }
+                    else {
+                      cfgOf!(instance, *cCh) |
+                      for (@ok, @cfg, @inst <- cCh) {
+                        if (not ok) { ret!((false, cfg)) }
+                        else { if (inst.get("status") != "active") { ret!((false, "the round is not active")) }
+                        else { if (not cfg.get("anonymous")) { ret!((false, "this round does not allow anonymous ink")) }
+                        else {
+                          TreeHashMap!("get", state, ("roster", instance), *kCh) |
+                          for (@roster <- kCh) {
+                            match roster { Nil => { nCh!(0) } r => { enteredCount!(r, inst.get("participants"), 0, *nCh) } } |
+                            for (@n <- nCh) {
+                              if (n < cfg.get("anonMin")) { ret!((false, "too few players for anonymous ink")) }
+                              else {
+                                match batch {
+                                  [_ ...rest] => {
+                                    if (batch.length() > 64) { ret!((false, "at most 64 inks per batch")) }
+                                    else { relayBatch!(instance, inst, cfg, batch, [], *bCh) | for (@results <- bCh) { ret!((true, results)) } }
+                                  }
+                                  _ => { ret!((false, "a batch is a list of 1 to 64 entries")) }
+                                }
+                              }
+                            }
+                          }
+                        } } }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // relayReveal(instance, target, handle, address): the inker of an
+              // anonymous stripe reveals themselves (D2); the stripe keeps its place.
+              contract env(@"relayReveal", @instance, @target, @handle, @address, ret) = {
+                new whoCh, rCh, iCh, sCh, kCh, a1, a2 in {
+                  who!(*whoCh) |
+                  TreeHashMap!("get", state, "relay", *rCh) |
+                  for (@by, _ <- whoCh & @relay <- rCh) {
+                    if (relay == Nil or by != relay) { ret!((false, "only the relay may reveal anonymous stripes")) }
+                    else {
+                      instanceOf!(instance, *iCh) |
+                      TreeHashMap!("get", state, ("s", instance, target, ["anon", handle]), *sCh) |
+                      for (@inst <- iCh & @stripe <- sCh) {
+                        if (inst == Nil or inst.get("status") == "closed") { ret!((false, "the round is closed")) }
+                        else { if (stripe == Nil) { ret!((false, "no such stripe")) }
+                        else { if (stripe.get("by") != Nil) { ret!((true, stripe.get("by"))) }
+                        else {
+                          clock!(*kCh) |
+                          for (@h, @t <- kCh) {
+                            TreeHashMap!("set", state, ("s", instance, target, ["anon", handle]), stripe.set("by", address), *a1) |
+                            appendTo!(("rlog", instance), [h, t, target, handle, address], *a2) |
+                            for (_ <- a1 & _ <- a2) { ret!((true, address)) }
+                          }
+                        } } }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // ------------------------------------------------ reads (explore templates)
+
+              contract collectPlayers(@instance, @roster, @participants, @acc, ret) = {
+                match roster {
+                  [] => { ret!(acc) }
+                  [a ...rest] => {
+                    new pCh in {
+                      TreeHashMap!("get", state, ("p", instance, a), *pCh) |
+                      for (@p <- pCh) {
+                        if (p == Nil) { collectPlayers!(instance, rest, participants, acc, *ret) }
+                        else { collectPlayers!(instance, rest, participants, acc.set(a, p.set("left", not participants.contains(a))), *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // players(instance): the round's configuration, status and close, the
+              // relay, and every entered player's record (leavers marked "left").
+              contract env(@"players", @instance, ret) = {
+                new cCh, rCh, kCh, lCh, pCh in {
+                  cfgOf!(instance, *cCh) |
+                  for (@ok, @cfg, @inst <- cCh) {
+                    if (not ok) { ret!((false, cfg)) }
+                    else {
+                      TreeHashMap!("get", state, ("roster", instance), *rCh) |
+                      TreeHashMap!("get", state, ("closedAt", instance), *kCh) |
+                      TreeHashMap!("get", state, "relay", *lCh) |
+                      for (@roster <- rCh & @closedAt <- kCh & @relay <- lCh) {
+                        match roster { Nil => { collectPlayers!(instance, [], {}, {}, *pCh) } r => { collectPlayers!(instance, r, inst.get("participants"), {}, *pCh) } } |
+                        for (@players <- pCh) {
+                          ret!((true, cfg.set("status", inst.get("status")).set("closedAt", closedAt).set("relay", relay).set("players", players)))
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // The stripes `a` has given, appended to acc[target].
+              contract stripesBy(@instance, @a, @targets, @acc, ret) = {
+                match targets {
+                  [] => { ret!(acc) }
+                  [b ...rest] => {
+                    new sCh in {
+                      TreeHashMap!("get", state, ("s", instance, b, a), *sCh) |
+                      for (@s <- sCh) {
+                        if (s == Nil) { stripesBy!(instance, a, rest, acc, *ret) }
+                        else { stripesBy!(instance, a, rest, acc.set(b, acc.getOrElse(b, []) ++ [s]), *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract stripesOf(@instance, @roster, @acc, ret) = {
+                match roster {
+                  [] => { ret!(acc) }
+                  [a ...rest] => {
+                    new oCh, sCh in {
+                      TreeHashMap!("get", state, ("o", instance, a), *oCh) |
+                      for (@o <- oCh) {
+                        if (o == Nil) { stripesOf!(instance, rest, acc, *ret) }
+                        else { stripesBy!(instance, a, o.toList(), acc, *sCh) | for (@acc2 <- sCh) { stripesOf!(instance, rest, acc2, *ret) } }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // The anonymous stripes: [[target, handle], ...] appended to acc[target].
+              contract anonStripes(@instance, @pairs, @acc, ret) = {
+                match pairs {
+                  [] => { ret!(acc) }
+                  [[b, hd] ...rest] => {
+                    new sCh in {
+                      TreeHashMap!("get", state, ("s", instance, b, ["anon", hd]), *sCh) |
+                      for (@s <- sCh) {
+                        if (s == Nil) { anonStripes!(instance, rest, acc, *ret) }
+                        else { anonStripes!(instance, rest, acc.set(b, acc.getOrElse(b, []) ++ [s]), *ret) }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract discOf(@instance, @roster, @acc, ret) = {
+                match roster {
+                  [] => { ret!(acc) }
+                  [a ...rest] => {
+                    new dCh in {
+                      TreeHashMap!("get", state, ("disc", instance, a), *dCh) |
+                      for (@d <- dCh) { if (d == Nil) { discOf!(instance, rest, acc, *ret) } else { discOf!(instance, rest, acc.set(a, d), *ret) } }
+                    }
+                  }
+                }
+              } |
+
+              // flags(instance): every stripe, grouped by target, and every disclosed key.
+              contract env(@"flags", @instance, ret) = {
+                new cCh, rCh, mCh, aCh, bCh, dCh, pairsCh in {
+                  cfgOf!(instance, *cCh) |
+                  for (@ok, @cfg, _ <- cCh) {
+                    if (not ok) { ret!((false, cfg)) }
+                    else {
+                      TreeHashMap!("get", state, ("roster", instance), *rCh) |
+                      TreeHashMap!("get", state, ("o", instance, "relay"), *mCh) |
+                      for (@roster0 <- rCh & @relayIdx <- mCh) {
+                        match roster0 { Nil => { aCh!([]) } r => { aCh!(r) } } |
+                        for (@roster <- aCh) {
+                          stripesOf!(instance, roster, {}, *bCh) |
+                          discOf!(instance, roster, {}, *dCh) |
+                          match relayIdx {
+                            Nil => { pairsCh!([]) }
+                            m => {
+                              new loop in {
+                                contract loop(@targets, @acc) = {
+                                  match targets {
+                                    [] => { pairsCh!(acc) }
+                                    [b ...rest] => {
+                                      new inner in {
+                                        contract inner(@hs, @acc2) = {
+                                          match hs {
+                                            [] => { loop!(rest, acc2) }
+                                            [hd ...more] => { inner!(more, acc2 ++ [[b, hd]]) }
+                                          }
+                                        } |
+                                        inner!(m.get(b).toList(), acc)
+                                      }
+                                    }
+                                  }
+                                } |
+                                loop!(m.keys().toList(), [])
+                              }
+                            }
+                          } |
+                          for (@given <- bCh & @disc <- dCh & @pairs <- pairsCh) {
+                            new sCh in {
+                              anonStripes!(instance, pairs, given, *sCh) |
+                              for (@stripes <- sCh) { ret!((true, {"stripes": stripes, "disc": disc})) }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // history(instance, target, sid, from): a stripe's history from position `from`, at most 256 entries.
+              contract env(@"history", @instance, @target, @sid, @from, ret) = {
+                new hCh in {
+                  TreeHashMap!("get", state, ("sh", instance, target, sid), *hCh) |
+                  for (@hist <- hCh) {
+                    match [hist, from] {
+                      [Nil, _] => { ret!((true, {"size": 0, "entries": []})) }
+                      [l, f /\ Int] => {
+                        if (f < 0 or f > l.length()) { ret!((false, "from is out of range")) }
+                        else {
+                          if (f + 256 < l.length()) { ret!((true, {"size": l.length(), "entries": l.slice(f, f + 256)})) }
+                          else { ret!((true, {"size": l.length(), "entries": l.slice(f, l.length())})) }
+                        }
+                      }
+                      _ => { ret!((false, "from must be a whole number")) }
+                    }
+                  }
+                }
+              } |
+
+              // A stripe history's entries with from <= h < to, as [h, t, "ink", target, sid, ink].
+              contract logHist(@hist, @target, @sid, @from, @to, @acc, ret) = {
+                match hist {
+                  [] => { ret!(acc) }
+                  [[h, t, v] ...rest] => {
+                    if (h >= from and h < to) { logHist!(rest, target, sid, from, to, acc ++ [[h, t, "ink", target, sid, v]], *ret) }
+                    else { logHist!(rest, target, sid, from, to, acc, *ret) }
+                  }
+                }
+              } |
+
+              // Histories of the stripes in `stripes` ({target: [stripe, ...]}), flattened.
+              contract logStripes(@instance, @pairs, @from, @to, @acc, ret) = {
+                match pairs {
+                  [] => { ret!(acc) }
+                  [[b, sid] ...rest] => {
+                    new hCh, fCh in {
+                      TreeHashMap!("get", state, ("sh", instance, b, sid), *hCh) |
+                      for (@hist <- hCh) {
+                        if (hist == Nil) { logStripes!(instance, rest, from, to, acc, *ret) }
+                        else { logHist!(hist, b, sid, from, to, acc, *fCh) | for (@acc2 <- fCh) { logStripes!(instance, rest, from, to, acc2, *ret) } }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract logPlog(@plog, @a, @from, @to, @acc, ret) = {
+                match plog {
+                  [] => { ret!(acc) }
+                  [[h, t, kind, v] ...rest] => {
+                    if (h >= from and h < to) { logPlog!(rest, a, from, to, acc ++ [[h, t, kind, a, v]], *ret) }
+                    else { logPlog!(rest, a, from, to, acc, *ret) }
+                  }
+                  [_ ...rest] => { logPlog!(rest, a, from, to, acc, *ret) }
+                }
+              } |
+
+              contract logPlayers(@instance, @roster, @from, @to, @acc, ret) = {
+                match roster {
+                  [] => { ret!(acc) }
+                  [a ...rest] => {
+                    new lCh, fCh in {
+                      TreeHashMap!("get", state, ("plog", instance, a), *lCh) |
+                      for (@plog <- lCh) {
+                        if (plog == Nil) { logPlayers!(instance, rest, from, to, acc, *ret) }
+                        else { logPlog!(plog, a, from, to, acc, *fCh) | for (@acc2 <- fCh) { logPlayers!(instance, rest, from, to, acc2, *ret) } }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              // log(instance, from, to): every ink, tag change, visibility change,
+              // veil and reveal with from <= h < to:
+              //   [h, t, "ink", target, sid, ink]   (ink missing when lifted)
+              //   [h, t, "flag" | "tags" | "veil", address, value]
+              //   [h, t, "reveal", target, handle, address]
+              // Readers order them as design §6.5 says.
+              contract env(@"log", @instance, @from, @to, ret) = {
+                new fCh, rCh, gCh, pCh, iCh in {
+                  env!("flags", instance, *fCh) |
+                  TreeHashMap!("get", state, ("roster", instance), *rCh) |
+                  TreeHashMap!("get", state, ("rlog", instance), *gCh) |
+                  for (@flagged <- fCh & @roster0 <- rCh & @rlog <- gCh) {
+                    match flagged {
+                      (true, f) => {
+                        new loop, rCh2 in {
+                          // [[target, sid], ...] for every stripe
+                          contract loop(@targets, @acc) = {
+                            match targets {
+                              [] => { pCh!(acc) }
+                              [b ...rest] => {
+                                new inner in {
+                                  contract inner(@ss, @acc2) = {
+                                    match ss {
+                                      [] => { loop!(rest, acc2) }
+                                      [s ...more] => { inner!(more, acc2 ++ [[b, s.get("sid")]]) }
+                                    }
+                                  } |
+                                  inner!(f.get("stripes").get(b), acc)
+                                }
+                              }
+                            }
+                          } |
+                          loop!(f.get("stripes").keys().toList(), []) |
+                          match roster0 { Nil => { rCh2!([]) } r => { rCh2!(r) } } |
+                          for (@pairs <- pCh & @roster <- rCh2) {
+                            new sCh, lCh in {
+                              logStripes!(instance, pairs, from, to, [], *sCh) |
+                              logPlayers!(instance, roster, from, to, [], *lCh) |
+                              for (@inks <- sCh & @plogs <- lCh) {
+                                match rlog {
+                                  Nil => { ret!((true, inks ++ plogs)) }
+                                  l => {
+                                    new loop2 in {
+                                      contract loop2(@xs, @acc) = {
+                                        match xs {
+                                          [] => { ret!((true, inks ++ plogs ++ acc)) }
+                                          [[h, t, b, hd, a] ...more] => {
+                                            if (h >= from and h < to) { loop2!(more, acc ++ [[h, t, "reveal", b, hd, a]]) } else { loop2!(more, acc) }
+                                          }
+                                        }
+                                      } |
+                                      loop2!(l, [])
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                      (false, why) => { ret!((false, why)) }
+                    }
+                  }
+                }
+              } |
+
+              contract filterMail(@sender, @outbox, @address, @after, @seq, @acc, ret) = {
+                match outbox {
+                  [] => { ret!(acc) }
+                  [m ...rest] => {
+                    if (seq > after and m.get("to").toSet().contains(address)) {
+                      filterMail!(sender, rest, address, after, seq + 1, acc ++ [m.set("from", sender).set("seq", seq)], *ret)
+                    } else { filterMail!(sender, rest, address, after, seq + 1, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract mailFrom(@instance, @senders, @address, @cursor, @acc, ret) = {
+                match senders {
+                  [] => { ret!(acc) }
+                  [s ...rest] => {
+                    new oCh, fCh in {
+                      TreeHashMap!("get", state, ("out", instance, s), *oCh) |
+                      for (@out <- oCh) {
+                        if (out == Nil) { mailFrom!(instance, rest, address, cursor, acc, *ret) }
+                        else {
+                          filterMail!(s, out, address, cursor.getOrElse(s, -1), 0, acc, *fCh) |
+                          for (@acc2 <- fCh) { mailFrom!(instance, rest, address, cursor, acc2, *ret) }
+                        }
+                      }
+                    }
+                  }
+                }
+              } |
+
+              contract env(@"mail", @instance, @address, @cursor, ret) = {
+                new pCh, mCh in {
+                  participants!(instance, *pCh) |
+                  for (@ps <- pCh) {
+                    match cursor {
+                      Nil => { mailFrom!(instance, ps, address, {}, [], *mCh) }
+                      c => { mailFrom!(instance, ps, address, c, [], *mCh) }
+                    } |
+                    for (@m <- mCh) { ret!((true, m)) }
+                  }
+                }
+              } |
+
+              contract filterOut(@out, @from, @seq, @acc, ret) = {
+                match out {
+                  [] => { ret!(acc) }
+                  [m ...rest] => {
+                    if (seq >= from) { filterOut!(rest, from, seq + 1, acc ++ [m.set("seq", seq)], *ret) }
+                    else { filterOut!(rest, from, seq + 1, acc, *ret) }
+                  }
+                }
+              } |
+
+              contract env(@"outbox", @instance, @address, @from, ret) = {
+                new oCh, fCh in {
+                  TreeHashMap!("get", state, ("out", instance, address), *oCh) |
+                  for (@out <- oCh) {
+                    if (out == Nil) { ret!((true, [])) }
+                    else { filterOut!(out, from, 0, [], *fCh) | for (@l <- fCh) { ret!((true, l)) } }
                   }
                 }
               }

@@ -26,6 +26,7 @@ use k256::ecdsa::SigningKey;
 use std::collections::BTreeMap;
 
 pub mod beat;
+pub mod ink;
 pub mod pix;
 
 pub const PRELUDE: &str = include_str!("../../../templates/games/prelude.rho");
@@ -123,18 +124,34 @@ pub const GAMES: &[GameSpec] = &[
     GameSpec {
         id: "f1r3ink",
         name: "F1R3Ink",
-        tagline: "Colour one another with what you see in them",
+        tagline: "Say how you see each other, in colour.",
         platforms: &["web"],
-        galleries: &[Gallery { kind: "round", label: "Rounds" }],
+        galleries: &[Gallery { kind: "round", label: "Rounds" }, Gallery { kind: "flag", label: "Portraits" }],
         contacts_dialogue: true,
         reader_tier: false,
         body: include_str!("../../../templates/games/f1r3ink.rho"),
+        // F1R3Ink design v1 §6.3–6.4 and §8: seven moves, the relay's three
+        // (signed only by the keys the environment names, never in an
+        // allowance), and six reads.
         methods: &[
+            m("enter", D, &["instance", "pk", "flag"], true),
             m("tags", D, &["instance", "tags"], true),
-            m("ink", D, &["instance", "target", "colour"], true),
-            m("state", E, &["instance"], false),
+            m("visibility", D, &["instance", "flag", "keys"], true),
+            m("ink", D, &["instance", "target", "ink"], true),
+            m("veil", D, &["instance", "sids"], true),
+            m("say", D, &["instance", "to", "envelope"], true),
+            m("close", D, &["instance"], true),
+            m("setRelay", D, &["address"], false),
+            m("relayInk", D, &["instance", "batch"], false),
+            m("relayReveal", D, &["instance", "target", "handle", "address"], false),
+            m("players", E, &["instance"], false),
+            m("flags", E, &["instance"], false),
+            m("history", E, &["instance", "target", "sid", "from"], false),
+            m("log", E, &["instance", "from", "to"], false),
+            m("mail", E, &["instance", "address", "cursor"], false),
+            m("outbox", E, &["instance", "address", "from"], false),
         ],
-        capabilities: &[],
+        capabilities: &["pay", "open", "relay"],
     },
     GameSpec {
         id: "f1r3sidechat",
@@ -226,6 +243,12 @@ impl GameSpec {
     /// `entry_base` hosts the game clients: `<entry_base>/<id>/` and
     /// `<entry_base>/<id>/preview/<kind>.html`.
     pub fn manifest(&self, env_uri: &str, entry_base: &str) -> Value {
+        self.manifest_with(env_uri, entry_base, None)
+    }
+
+    /// The manifest, with the relay a game that declares the `relay`
+    /// capability posts to (F1R3Ink design §8): `<relay_base>/<id>`.
+    pub fn manifest_with(&self, env_uri: &str, entry_base: &str, relay_base: Option<&str>) -> Value {
         let base = entry_base.trim_end_matches('/');
         let templates = self
             .templates(env_uri)
@@ -240,7 +263,7 @@ impl GameSpec {
                 ])
             })
             .collect();
-        Value::map([
+        let mut man = Value::map([
             ("id", Value::str(self.id)),
             ("name", Value::str(self.name)),
             ("tagline", Value::str(self.tagline)),
@@ -261,7 +284,14 @@ impl GameSpec {
             ("readerTier", Value::Bool(self.reader_tier)),
             ("envUri", Value::str(env_uri)),
             ("protocol", Value::Int(f1r3games_core::PROTOCOL_VERSION as i64)),
-        ])
+        ]);
+        match (relay_base, &mut man) {
+            (Some(r), Value::Map(m)) if self.capabilities.contains(&"relay") => {
+                m.insert("relay".to_string(), Value::str(format!("{}/{}", r.trim_end_matches('/'), self.id)));
+            }
+            _ => {}
+        }
+        man
     }
 
     /// Render and sign the environment deploy: signed by the service key

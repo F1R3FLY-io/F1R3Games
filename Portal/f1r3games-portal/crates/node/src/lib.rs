@@ -33,6 +33,9 @@ pub struct Explored {
     pub values: Vec<Value>,
     pub block_hash: String,
     pub block_number: Option<i64>,
+    /// The block's timestamp (ms): the clock games that measure time by the
+    /// block read against (F1R3Ink's decay, D5).
+    pub block_timestamp: Option<i64>,
 }
 
 impl Explored {
@@ -177,6 +180,7 @@ impl Node {
             values,
             block_hash: block.get("blockHash").and_then(Json::as_str).unwrap_or("").to_string(),
             block_number: block.get("blockNumber").and_then(Json::as_i64),
+            block_timestamp: block.get("timestamp").and_then(Json::as_i64),
         })
     }
 

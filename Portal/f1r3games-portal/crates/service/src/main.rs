@@ -68,6 +68,16 @@ enum Cmd {
         only: Vec<String>,
         #[arg(long, default_value = "manifests.json")]
         out: String,
+        /// The relay base for games that declare the relay capability
+        /// (F1R3Ink): their manifests name <relay-base>/<id>.
+        #[arg(long)]
+        relay_base: Option<String>,
+    },
+    /// Write a relay key and handle secret for F1R3Ink's relay in DIR, and
+    /// print the key's address (name it with `f1r3games ink set-relay`).
+    RelayKeygen {
+        #[arg(long, default_value = ".")]
+        dir: String,
     },
     /// Register the manifests in FILE with the Cooperative's key
     /// (F1R3GAMES_COOP_KEY, or --coop-key-file); skips games already current.
@@ -196,13 +206,25 @@ async fn main() -> anyhow::Result<()> {
         }
         return Ok(());
     }
-    if let Some(Cmd::GamesManifests { keys, entry_base, entry, only, out }) = &cli.cmd {
+    if let Some(Cmd::RelayKeygen { dir }) = &cli.cmd {
+        let dir = std::path::Path::new(dir);
+        let (kp, sp) = (dir.join("relay-key.json"), dir.join("relay-secret.hex"));
+        anyhow::ensure!(!kp.exists() && !sp.exists(), "{} or {} exists; refusing to replace a relay's keys", kp.display(), sp.display());
+        let key = keyfile::generate();
+        let mut secret = [0u8; 32];
+        f1r3games_core::hash::random_bytes(&mut secret);
+        write_private(&kp, &keyfile::serialize(&key))?;
+        write_private(&sp, &hex::encode(secret))?;
+        println!("{}", f1r3games_core::Address::from_public_key(key.verifying_key()));
+        return Ok(());
+    }
+    if let Some(Cmd::GamesManifests { keys, entry_base, entry, only, out, relay_base }) = &cli.cmd {
         let bases = entry_bases(entry_base, entry, only)?;
         let mut all = vec![];
         for g in f1r3games_games::GAMES {
             let Some(base) = bases.get(g.id) else { continue };
             let uri = f1r3games_games::env_uri(&game_key(keys, g.id)?);
-            all.push(serde_json::json!({ "id": g.id, "envUri": uri, "manifest": g.manifest(&uri, base).to_typed_json() }));
+            all.push(serde_json::json!({ "id": g.id, "envUri": uri, "manifest": g.manifest_with(&uri, base, relay_base.as_deref()).to_typed_json() }));
         }
         std::fs::write(out, serde_json::to_string_pretty(&all)?)?;
         println!("wrote {} manifests to {out}; register them with `f1r3games-service register-games {out}` and the Cooperative's key", all.len());
@@ -220,7 +242,22 @@ async fn main() -> anyhow::Result<()> {
     };
     let secret = hex::decode(secret_hex.trim()).context("token secret must be hex")?;
     anyhow::ensure!(secret.len() >= 32, "token secret must be at least 32 bytes");
-    let st = Arc::new(State::new(config, service_key, env_key, secret));
+    let mut state = State::new(config, service_key, env_key, secret);
+    if state.config.relay.enabled {
+        let rc = state.config.relay.clone();
+        let key = key_from("F1R3GAMES_RELAY_KEY", &rc.key_file, "relay key")?;
+        let hex_secret = match env_var("F1R3GAMES_RELAY_SECRET") {
+            Some(v) => v,
+            None => {
+                anyhow::ensure!(!rc.secret_file.is_empty(), "relay secret: set F1R3GAMES_RELAY_SECRET or relay.secret_file");
+                read(&rc.secret_file)?
+            }
+        };
+        let rs = hex::decode(hex_secret.trim()).context("relay secret must be hex")?;
+        anyhow::ensure!(rs.len() >= 32, "relay secret must be at least 32 bytes");
+        state = state.with_relay(key, rs);
+    }
+    let st = Arc::new(state);
     match cli.cmd.unwrap_or(Cmd::Serve) {
         Cmd::EnvUri => {
             println!("{}", st.env_uri);
@@ -237,7 +274,7 @@ async fn main() -> anyhow::Result<()> {
             }
             Ok(())
         }
-        Cmd::Keygen { .. } | Cmd::GamesKeygen { .. } | Cmd::GamesManifests { .. } => unreachable!(),
+        Cmd::Keygen { .. } | Cmd::GamesKeygen { .. } | Cmd::GamesManifests { .. } | Cmd::RelayKeygen { .. } => unreachable!(),
         Cmd::GamesInstall { keys, version, only, wait } => {
             for g in selected(&only) {
                 let key = game_key(&keys, g.id)?;
@@ -303,6 +340,9 @@ async fn main() -> anyhow::Result<()> {
             for (name, l, r) in servers {
                 tracing::info!(listen = %name, "serving");
                 set.spawn(async move { axum::serve(l, r).await.map_err(|e| anyhow::anyhow!("{name}: {e}")) });
+            }
+            if st.relay.is_some() {
+                tokio::spawn(f1r3games_service::relay::run(st.clone()));
             }
             tracing::info!(env = %st.env_uri, "f1r3games-service ready");
             while let Some(r) = set.join_next().await {

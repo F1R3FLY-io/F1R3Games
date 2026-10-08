@@ -24,6 +24,13 @@
 //! [faucet]
 //! enabled = true
 //! amount = 100000000
+//! [relay]                                    # F1R3Ink's relay (F1R3Ink design §8)
+//! enabled = true
+//! base_url = "http://localhost:40700/api/relay"  # the manifests' relay base (games-manifests --relay-base)
+//! key_file = "relay-key.json"                # or F1R3GAMES_RELAY_KEY; named on chain with `f1r3games ink set-relay`
+//! secret_file = "relay-secret.hex"           # 32+ bytes, hex (or F1R3GAMES_RELAY_SECRET): derives handles
+//! window_blocks = 3
+//! per_hour = 30
 //! [[origins]]                                # a game client on an origin of its own (F2)
 //! id = "f1r3pix"
 //! listen = ["127.0.0.1:40701", "[::1]:40701"]
@@ -71,6 +78,42 @@ pub struct Faucet {
 impl Default for Faucet {
     fn default() -> Self {
         Faucet { enabled: false, amount: 0 }
+    }
+}
+
+fn d_window() -> i64 { 3 }
+fn d_per_hour() -> usize { 30 }
+fn d_relay_phlo() -> i64 { 5_000_000 }
+fn d_poll() -> u64 { 2_000 }
+
+/// F1R3Ink's relay (F1R3Ink design §8, D10): off unless enabled.
+#[derive(Clone, Debug, Deserialize)]
+pub struct RelayConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    /// The base the manifests name: requests must carry `<base_url>/<game>`.
+    #[serde(default)]
+    pub base_url: String,
+    #[serde(default)]
+    pub key_file: String,
+    #[serde(default)]
+    pub secret_file: String,
+    /// Blocks between batches.
+    #[serde(default = "d_window")]
+    pub window_blocks: i64,
+    /// Relayed requests per player per hour.
+    #[serde(default = "d_per_hour")]
+    pub per_hour: usize,
+    #[serde(default = "d_relay_phlo")]
+    pub phlo_limit: i64,
+    /// How often to look for a new block (ms).
+    #[serde(default = "d_poll")]
+    pub poll_ms: u64,
+}
+
+impl Default for RelayConfig {
+    fn default() -> Self {
+        RelayConfig { enabled: false, base_url: String::new(), key_file: String::new(), secret_file: String::new(), window_blocks: d_window(), per_hour: d_per_hour(), phlo_limit: d_relay_phlo(), poll_ms: d_poll() }
     }
 }
 
@@ -144,6 +187,8 @@ pub struct Config {
     /// Game clients served by this process, each on its own origin (F2).
     #[serde(default)]
     pub origins: Vec<GameOrigin>,
+    #[serde(default)]
+    pub relay: RelayConfig,
 }
 
 impl Config {
@@ -159,6 +204,10 @@ impl Config {
                 o.id
             );
             anyhow::ensure!(!o.listen.addrs().is_empty(), "origins.{}: no listen address", o.id);
+        }
+        if c.relay.enabled {
+            anyhow::ensure!(c.relay.base_url.starts_with("http"), "relay.base_url must be an http(s) URL");
+            anyhow::ensure!(c.relay.window_blocks >= 1 && c.relay.per_hour >= 1, "relay: window_blocks and per_hour must be at least 1");
         }
         Ok(c)
     }
@@ -196,6 +245,7 @@ mod tests {
         assert_eq!(c.listen.addrs(), vec!["127.0.0.1:8640"]);
         assert_eq!(c.validators(), vec!["http://v"]);
         assert!(c.origins.is_empty() && c.public_host.is_none());
+        assert!(!c.relay.enabled && c.relay.window_blocks == 3 && c.relay.per_hour == 30);
     }
 
     #[test]

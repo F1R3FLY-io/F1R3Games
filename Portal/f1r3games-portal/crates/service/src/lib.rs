@@ -10,6 +10,7 @@
 //!   deploy to a validator. The service never proposes.
 //! * `POST /api/explore` and the `GET` read routes run explore templates at an
 //!   observer and return typed values with the block hash they reflect.
+//! * `POST /api/relay/{game}` is F1R3Ink's relay, when configured (`relay`).
 //! * At start-up (or `f1r3games-service bootstrap`) the `games` environment is
 //!   installed or upgraded under the service's registry key.
 
@@ -18,6 +19,7 @@ pub mod config;
 pub mod hosts;
 pub mod origins;
 pub mod register;
+pub mod relay;
 pub mod routes;
 pub mod status;
 pub mod token;
@@ -36,6 +38,8 @@ pub struct State {
     pub env_key: SigningKey,
     pub env_uri: String,
     pub token_secret: Vec<u8>,
+    /// F1R3Ink's relay, when `[relay]` is enabled.
+    pub relay: Option<relay::Relay>,
 }
 
 pub type Shared = Arc<State>;
@@ -44,7 +48,13 @@ impl State {
     pub fn new(config: config::Config, service_key: SigningKey, env_key: SigningKey, token_secret: Vec<u8>) -> State {
         let env_uri = registry::uri_for_public_key(&keyfile::public_key_bytes(&env_key));
         let node = Node::with_validators(config.validators(), &config.observer_url);
-        State { config, node, service_key, env_key, env_uri, token_secret }
+        State { config, node, service_key, env_key, env_uri, token_secret, relay: None }
+    }
+
+    /// Run the relay with this key (named on chain by `setRelay`) and handle secret.
+    pub fn with_relay(mut self, key: SigningKey, secret: Vec<u8>) -> State {
+        self.relay = Some(relay::Relay::new(key, secret, self.config.relay.clone()));
+        self
     }
 
     pub fn service_address(&self) -> Address {

@@ -27,6 +27,8 @@ pub enum WalletError {
     NotApproved,
     #[error(transparent)]
     Envelope(#[from] crate::envelope::EnvelopeError),
+    #[error("relay request refused: {0}")]
+    Relay(String),
 }
 
 pub struct Wallet {
@@ -102,6 +104,23 @@ impl Wallet {
     pub fn open_envelope(&self, game: &str, instance: &str, envelope: &[u8]) -> Result<(String, Vec<u8>), WalletError> {
         let me = self.active_address()?.to_string();
         Ok(crate::envelope::open(game, instance, &me, &self.active_key()?, envelope)?)
+    }
+
+    /// Open a sealed ink (F1R3Ink design §7) addressed to the active key,
+    /// trying each unlabelled wrap. `game` and `instance` come from the host.
+    pub fn open_ink(&self, game: &str, instance: &str, envelope: &[u8]) -> Result<crate::envelope::OpenedInk, WalletError> {
+        Ok(crate::envelope::open_ink(game, instance, &self.active_key()?, envelope)?)
+    }
+
+    /// Sign a relay request (F1R3Ink design §8) with the active key. The host
+    /// composes the message: it must be a relay message naming the active
+    /// address, so this cannot be used to sign anything else.
+    pub fn relay_signature(&self, message: &str) -> Result<Vec<u8>, WalletError> {
+        let m = f1r3games_core::relay::parse(message).map_err(|e| WalletError::Relay(e.to_string()))?;
+        if m.address != self.active_address()?.to_string() {
+            return Err(WalletError::Relay("the request names another address".into()));
+        }
+        Ok(f1r3games_core::relay::sign(&self.active_key()?, message))
     }
 
     pub fn active_public_key_hex(&self) -> Result<String, WalletError> {

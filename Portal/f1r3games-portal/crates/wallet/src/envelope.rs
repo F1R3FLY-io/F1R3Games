@@ -296,3 +296,186 @@ pub fn open(game: &str, instance: &str, me: &str, key: &SigningKey, bytes: &[u8]
         .map_err(|_| EnvelopeError::WrongScope)?;
     Ok((env.sender, pt))
 }
+
+// ---------------------------------------------------------------- sealed inks (F1R3Ink design §7)
+//
+// A private flag's inks use the message envelope with two changes. The domain
+// is `<game>/ink/v1` and the content key's aad binds the stripe and its next
+// sequence number, so a sealed ink cannot be replayed onto another stripe or
+// into another place in its own history. The two wraps (the target's and the
+// inker's) carry no addresses and come in random order, so an anonymous
+// stripe does not name its inker in its own envelope; readers try both.
+//
+// ```text
+// label  = utf8(game + "/ink/v1") ‖ utf8(instance)
+// aad    = label ‖ utf8(target) ‖ "|" ‖ utf8(sid) ‖ "|" ‖ decimal(seq)
+// C      = AES-256-GCM_K(n0, colour byte ‖ 15 zero bytes, aad)
+// CBOR   {c: C, d: sid, e: E, n: n0, q: seq, t: target, v: 2, w: [[n_j, wrap_j], [n_k, wrap_k]]}
+// ```
+// sid is the inker's address for an attributed stripe and "anon:<handle>" for
+// an anonymous one.
+
+pub const INK_VERSION: u64 = 2;
+pub const INK_PLAINTEXT: usize = 16;
+
+pub fn ink_label(game: &str, instance: &str) -> Vec<u8> {
+    let mut l = format!("{game}/ink/v1").into_bytes();
+    l.extend(instance.as_bytes());
+    l
+}
+
+pub fn ink_aad(label: &[u8], target: &str, sid: &str, seq: u64) -> Vec<u8> {
+    let mut a = label.to_vec();
+    a.extend(format!("{target}|{sid}|{seq}").as_bytes());
+    a
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InkEnvelope {
+    pub target: String,
+    pub sid: String,
+    pub seq: u64,
+    pub ephemeral: Vec<u8>,
+    pub nonce: [u8; 12],
+    pub ciphertext: Vec<u8>,
+    /// (nonce, wrapped content key), unlabelled.
+    pub wraps: Vec<([u8; 12], Vec<u8>)>,
+}
+
+impl InkEnvelope {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let w = self.wraps.iter().map(|(n, k)| Cbor::Array(vec![Cbor::Bytes(n.to_vec()), Cbor::Bytes(k.clone())])).collect();
+        let m = Cbor::Map(vec![
+            ("c".into(), Cbor::Bytes(self.ciphertext.clone())),
+            ("d".into(), Cbor::Text(self.sid.clone())),
+            ("e".into(), Cbor::Bytes(self.ephemeral.clone())),
+            ("n".into(), Cbor::Bytes(self.nonce.to_vec())),
+            ("q".into(), Cbor::Uint(self.seq)),
+            ("t".into(), Cbor::Text(self.target.clone())),
+            ("v".into(), Cbor::Uint(INK_VERSION)),
+            ("w".into(), Cbor::Array(w)),
+        ]);
+        let mut out = vec![];
+        encode(&m, &mut out);
+        out
+    }
+
+    pub fn from_bytes(b: &[u8]) -> Result<InkEnvelope, EnvelopeError> {
+        let Cbor::Map(kv) = decode(b)? else { return Err(EnvelopeError::Corrupt) };
+        let get = |k: &str| kv.iter().find(|(x, _)| x == k).map(|(_, v)| v.clone()).ok_or(EnvelopeError::Corrupt);
+        if get("v")? != Cbor::Uint(INK_VERSION) {
+            return Err(EnvelopeError::Version);
+        }
+        let (Cbor::Bytes(c), Cbor::Text(d), Cbor::Bytes(e), Cbor::Bytes(n), Cbor::Uint(q), Cbor::Text(t), Cbor::Array(w)) =
+            (get("c")?, get("d")?, get("e")?, get("n")?, get("q")?, get("t")?, get("w")?)
+        else {
+            return Err(EnvelopeError::Corrupt);
+        };
+        let wraps = w
+            .into_iter()
+            .map(|x| match x {
+                Cbor::Array(t) => match t.as_slice() {
+                    [Cbor::Bytes(n), Cbor::Bytes(k)] => Ok((nonce12(n)?, k.clone())),
+                    _ => Err(EnvelopeError::Corrupt),
+                },
+                _ => Err(EnvelopeError::Corrupt),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if wraps.is_empty() || wraps.len() > 4 {
+            return Err(EnvelopeError::Corrupt);
+        }
+        Ok(InkEnvelope { target: t, sid: d, seq: q, ephemeral: e, nonce: nonce12(&n)?, ciphertext: c, wraps })
+    }
+}
+
+/// The envelope's version (1: message, 2: ink), without opening it.
+pub fn version(b: &[u8]) -> Result<u64, EnvelopeError> {
+    let Cbor::Map(kv) = decode(b)? else { return Err(EnvelopeError::Corrupt) };
+    match kv.iter().find(|(k, _)| k == "v").map(|(_, v)| v) {
+        Some(Cbor::Uint(v)) => Ok(*v),
+        _ => Err(EnvelopeError::Corrupt),
+    }
+}
+
+/// Seal an ink with explicit randomness. `parties` are the public keys of the
+/// target and the inker, in the order the wraps are to appear.
+#[allow(clippy::too_many_arguments)]
+pub fn seal_ink_with(
+    game: &str,
+    instance: &str,
+    target: &str,
+    sid: &str,
+    seq: u64,
+    parties: &[&[u8]],
+    colour: u8,
+    ephemeral: &SecretKey,
+    content_key: [u8; 32],
+    n0: [u8; 12],
+    nonces: &[[u8; 12]],
+) -> Result<Vec<u8>, EnvelopeError> {
+    if parties.len() != nonces.len() || parties.is_empty() {
+        return Err(EnvelopeError::Corrupt);
+    }
+    let l = ink_label(game, instance);
+    let e_pub = ephemeral.public_key().to_encoded_point(true).as_bytes().to_vec();
+    let mut pt = [0u8; INK_PLAINTEXT];
+    pt[0] = colour;
+    let c = Aes256Gcm::new(&content_key.into())
+        .encrypt(Nonce::from_slice(&n0), Payload { msg: &pt, aad: &ink_aad(&l, target, sid, seq) })
+        .map_err(|_| EnvelopeError::Corrupt)?;
+    let mut wraps = vec![];
+    for (pk, n) in parties.iter().zip(nonces) {
+        let p = PublicKey::from_sec1_bytes(pk).map_err(|_| EnvelopeError::BadKey(hex::encode(pk)))?;
+        let z = diffie_hellman(ephemeral.to_nonzero_scalar(), p.as_affine());
+        let w = wrap_key(z.raw_secret_bytes(), &e_pub, &l);
+        let k = Aes256Gcm::new(&w.into()).encrypt(Nonce::from_slice(n), content_key.as_slice()).map_err(|_| EnvelopeError::Corrupt)?;
+        wraps.push((*n, k));
+    }
+    Ok(InkEnvelope { target: target.into(), sid: sid.into(), seq, ephemeral: e_pub, nonce: n0, ciphertext: c, wraps }.to_bytes())
+}
+
+/// An opened ink: where it says it belongs, its colour, and its content key
+/// (which its owner discloses when going public).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenedInk {
+    pub target: String,
+    pub sid: String,
+    pub seq: u64,
+    pub colour: u8,
+    pub key: [u8; 32],
+}
+
+fn ink_plaintext(env: &InkEnvelope, l: &[u8], k: &[u8; 32]) -> Result<u8, EnvelopeError> {
+    let pt = Aes256Gcm::new(&(*k).into())
+        .decrypt(Nonce::from_slice(&env.nonce), Payload { msg: &env.ciphertext, aad: &ink_aad(l, &env.target, &env.sid, env.seq) })
+        .map_err(|_| EnvelopeError::WrongScope)?;
+    if pt.len() != INK_PLAINTEXT || pt[1..].iter().any(|&b| b != 0) {
+        return Err(EnvelopeError::Corrupt);
+    }
+    Ok(pt[0])
+}
+
+/// Open a sealed ink with `key`, trying each unlabelled wrap.
+pub fn open_ink(game: &str, instance: &str, key: &SigningKey, bytes: &[u8]) -> Result<OpenedInk, EnvelopeError> {
+    let env = InkEnvelope::from_bytes(bytes)?;
+    let e = PublicKey::from_sec1_bytes(&env.ephemeral).map_err(|_| EnvelopeError::Corrupt)?;
+    let l = ink_label(game, instance);
+    let z = diffie_hellman(key.as_nonzero_scalar(), e.as_affine());
+    let w = wrap_key(z.raw_secret_bytes(), &env.ephemeral, &l);
+    let cipher = Aes256Gcm::new(&w.into());
+    let k = env
+        .wraps
+        .iter()
+        .find_map(|(n, wrapped)| cipher.decrypt(Nonce::from_slice(n), wrapped.as_slice()).ok())
+        .ok_or(EnvelopeError::NotAddressed)?;
+    let k: [u8; 32] = k.try_into().map_err(|_| EnvelopeError::Corrupt)?;
+    let colour = ink_plaintext(&env, &l, &k)?;
+    Ok(OpenedInk { target: env.target, sid: env.sid, seq: env.seq, colour, key: k })
+}
+
+/// Open a sealed ink with a disclosed content key (anyone can; design §7).
+pub fn open_ink_with_key(game: &str, instance: &str, content_key: &[u8; 32], bytes: &[u8]) -> Result<OpenedInk, EnvelopeError> {
+    let env = InkEnvelope::from_bytes(bytes)?;
+    let colour = ink_plaintext(&env, &ink_label(game, instance), content_key)?;
+    Ok(OpenedInk { target: env.target, sid: env.sid, seq: env.seq, colour, key: *content_key })
+}

@@ -15,7 +15,7 @@ use serde::Deserialize;
 use serde_json::{json, Value as Json_};
 use std::collections::BTreeMap;
 
-pub struct ApiError(StatusCode, String);
+pub struct ApiError(pub StatusCode, pub String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -58,6 +58,7 @@ pub fn router(st: Shared) -> Router {
         .route("/api/sponsorships/{id}", get(sponsorship))
         .route("/api/engagement/{play}", get(engagement))
         .route("/api/contacts/{address}", get(contacts))
+        .route("/api/relay/{game}", post(relay))
         .with_state(st.clone())
         .fallback_service(static_files(&st))
 }
@@ -116,7 +117,7 @@ fn args_json(args: &BTreeMap<String, Value>) -> Json_ {
     Json_::Object(args.iter().map(|(k, v)| (k.clone(), v.to_typed_json())).collect())
 }
 
-fn with_env(st: &Shared, t: &Template, args: &mut BTreeMap<String, Value>) -> Result<(), ApiError> {
+pub(crate) fn with_env(st: &Shared, t: &Template, args: &mut BTreeMap<String, Value>) -> Result<(), ApiError> {
     if !t.holes().map_err(bad)?.iter().any(|h| h == "env_uri") {
         return if args.contains_key("env_uri") { Err(bad("this template has no env_uri")) } else { Ok(()) };
     }
@@ -133,7 +134,7 @@ fn with_env(st: &Shared, t: &Template, args: &mut BTreeMap<String, Value>) -> Re
 /// Resolve a template: the portal catalogue, or — when `game` is given — the
 /// template of that id in the game's on-chain manifest, whose source must
 /// hash to the hash the manifest lists.
-async fn resolve(st: &Shared, template: &str, game: Option<&str>, kind: TemplateKind) -> Result<Template, ApiError> {
+pub(crate) async fn resolve(st: &Shared, template: &str, game: Option<&str>, kind: TemplateKind) -> Result<Template, ApiError> {
     if let Some(g) = game {
         let t = catalogue::get("games.get").unwrap();
         let mut args = a1("game", Value::String(g.to_string()));
@@ -289,6 +290,7 @@ async fn run_explore_in(st: &Shared, template: &str, game: Option<&str>, mut arg
     let mut out = outcome_json(e.first());
     out["blockHash"] = json!(e.block_hash);
     out["blockNumber"] = json!(e.block_number);
+    out["blockTimestamp"] = json!(e.block_timestamp);
     Ok(Json(out))
 }
 
@@ -364,6 +366,11 @@ async fn engagement(AxState(st): AxState<Shared>, Path(p): Path<String>) -> R<Js
 async fn contacts(AxState(st): AxState<Shared>, Path(address): Path<String>) -> R<Json_> {
     Address::parse(&address).map_err(bad)?;
     run_explore(&st, "contacts.get", a1("address", Value::String(address))).await
+}
+
+/// F1R3Ink's relay (F1R3Ink design §8).
+async fn relay(AxState(st): AxState<Shared>, Path(game): Path<String>, Json(req): Json<crate::relay::RelayReq>) -> R<Json_> {
+    crate::relay::serve(&st, &game, req).await.map(Json)
 }
 
 async fn deploy_status(AxState(st): AxState<Shared>, Path(id): Path<String>) -> R<Json_> {

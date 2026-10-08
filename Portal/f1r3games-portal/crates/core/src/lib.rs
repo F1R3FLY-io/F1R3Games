@@ -17,6 +17,7 @@
 //!   hashes, rendering and recognition.
 //! * [`invite`] — invitation keys, links and redemption signatures.
 //! * [`ids`] — identifiers known before the deploy that creates the object.
+//! * [`relay`] — signed requests to a game's relay (F1R3Ink design §8).
 
 pub mod address;
 pub mod catalogue;
@@ -26,6 +27,7 @@ pub mod ids;
 pub mod invite;
 pub mod keyfile;
 pub mod registry;
+pub mod relay;
 pub mod rho;
 pub mod template;
 

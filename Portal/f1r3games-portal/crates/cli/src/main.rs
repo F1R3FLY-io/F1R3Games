@@ -25,6 +25,7 @@ use std::io::{BufRead, Write};
 use std::path::PathBuf;
 
 mod beat;
+mod ink;
 
 #[derive(Parser)]
 #[command(name = "f1r3games", about = "F1R3Games portal client")]
@@ -106,12 +107,24 @@ enum Cmd {
         #[command(subcommand)]
         cmd: BeatCmd,
     },
+    /// F1R3Ink's relay (design §8): name the relay that writes anonymous stripes.
+    Ink {
+        #[command(subcommand)]
+        cmd: InkCmd,
+    },
     /// Run any explore template: `read games.list`.
     Read {
         template: String,
         #[arg(long, default_value = "{}")]
         args: String,
     },
+}
+
+#[derive(Subcommand)]
+enum InkCmd {
+    /// Name the relay; sign with F1R3Ink's environment key active. ADDRESS is
+    /// the relay key's address (`f1r3games-service relay-keygen` prints it).
+    SetRelay { address: String },
 }
 
 #[derive(Subcommand)]
@@ -600,6 +613,12 @@ async fn main() -> Result<()> {
                 BeatCmd::SetBreeder { address } => beat::set_breeder(&mut ctx, address).await?,
                 BeatCmd::Epoch { nursery, epoch, days, dry_run } => beat::epoch(&mut ctx, nursery, *epoch, *days, *dry_run).await?,
                 BeatCmd::Verify { epoch } => beat::verify(&ctx, *epoch).await?,
+            }
+        }
+        Cmd::Ink { cmd } => {
+            let mut ctx = open(&cli).await?;
+            match cmd {
+                InkCmd::SetRelay { address } => ink::set_relay(&mut ctx, address).await?,
             }
         }
         Cmd::Read { template, args } => {
