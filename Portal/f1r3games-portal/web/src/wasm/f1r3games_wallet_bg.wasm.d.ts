@@ -29,6 +29,7 @@ export const registerGameTemplate: (a: number, b: number, c: number, d: number, 
 export const review: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number, number];
 export const setActive: (a: number, b: number) => [number, number];
 export const sign: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
+export const signRelay: (a: number, b: number) => [number, number, number, number];
 export const unlockWithPasskey: (a: number, b: number, c: number, d: number) => [number, number];
 export const unlockWithPassphrase: (a: number, b: number) => [number, number];
 export const __wbindgen_exn_store: (a: number) => void;

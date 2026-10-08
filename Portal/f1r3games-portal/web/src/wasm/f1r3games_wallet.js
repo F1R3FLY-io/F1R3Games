@@ -467,8 +467,10 @@ export function newInvitation(base_url, instance_id) {
 
 /**
  * A fresh invitation key and its link: `{publicKey, link}`.
- * Open a message envelope (hex) addressed to the active key. The host passes
- * the hosted game's id and instance (F1R3Pix design R3). Returns {sender, text}.
+ * Open an envelope (hex) addressed to the active key. The host passes the
+ * hosted game's id and instance (F1R3Pix design R3). A message (version 1)
+ * answers {sender, text}; a sealed ink (version 2, F1R3Ink design §7) answers
+ * {kind: "ink", target, sid, seq, colour, key}, trying each unlabelled wrap.
  * @param {string} game
  * @param {string} instance
  * @param {string} envelope_hex
@@ -671,6 +673,34 @@ export function sign(origin, template, args_json, prepared_hex, instance, approv
         return getStringFromWasm0(ptr6, len6);
     } finally {
         wasm.__wbindgen_free(deferred7_0, deferred7_1, 1);
+    }
+}
+
+/**
+ * Sign a relay request (F1R3Ink design §8): the host composes `message`
+ * (JSON naming the hosted game, instance and relay URL). Returns
+ * {publicKey, signature} (hex).
+ * @param {string} message
+ * @returns {string}
+ */
+export function signRelay(message) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(message, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.signRelay(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
     }
 }
 

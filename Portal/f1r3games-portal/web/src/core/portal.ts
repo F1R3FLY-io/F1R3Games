@@ -44,8 +44,10 @@ export interface GameManifest {
   contactsDialogue?: boolean;
   readerTier?: boolean;
   status?: string;
-  /** Host-protocol capabilities beyond the base set (protocol 2: "pay", "open"). */
+  /** Host-protocol capabilities beyond the base set (protocol 2: "pay", "open", "relay"). */
   capabilities?: string[];
+  /** The relay a game with the `relay` capability posts to (F1R3Ink design §8). */
+  relay?: string;
 }
 /** A payment between participants of an instance, as `payments.list` answers it. */
 export interface Payment {
@@ -191,10 +193,28 @@ export class Portal {
   }
 
   /** A read together with the block it reflects. */
-  async readMeta<P = Plain>(template: string, args: { [k: string]: Typed } = {}, game?: string): Promise<{ value: P; blockHash: string | null; blockNumber: number | null }> {
+  async readMeta<P = Plain>(template: string, args: { [k: string]: Typed } = {}, game?: string): Promise<{ value: P; blockHash: string | null; blockNumber: number | null; blockTimestamp: number | null }> {
     const r: any = await this.service.explore(template, args, game);
     if (!r.ok) throw new Error(r.error ?? "read failed");
-    return { value: plain(r.value) as P, blockHash: r.blockHash ?? null, blockNumber: r.blockNumber ?? null };
+    return { value: plain(r.value) as P, blockHash: r.blockHash ?? null, blockNumber: r.blockNumber ?? null, blockTimestamp: r.blockTimestamp ?? null };
+  }
+
+  /** Relay a request for a hosted game (F1R3Ink design §8, R5). The game id,
+   *  the instance and the relay URL come from the host and the registered
+   *  manifest, never from the game; the wallet signs under the relay domain.
+   *  Needs a live allowance for the instance, as play does; costs the player no phlo. */
+  async relay(g: GameManifest, instance: string, op: string, params: Plain, now = Date.now()) {
+    if (!g.relay || !(g.capabilities ?? []).includes("relay")) throw Object.assign(new Error(`${g.id} names no relay`), { code: "no-relay" });
+    if (!this.service.relay) throw Object.assign(new Error("this portal cannot reach a relay"), { code: "no-relay" });
+    const live = this.wallet.allowances().some((a) => a.game === g.id && a.instance === instance && a.expiresAt > now);
+    if (!live) throw Object.assign(new Error("no allowance for this game here; reopen it from the portal"), { code: "allowance" });
+    const message = JSON.stringify({ v: 1, game: g.id, instance, relay: g.relay, op, params, address: this.wallet.address, at: now });
+    const { publicKey, signature } = this.wallet.signRelay(message);
+    try {
+      return await this.service.relay(g.relay, { message, publicKey, signature });
+    } catch (e: any) {
+      throw Object.assign(new Error(e?.message ?? String(e)), { code: "relay", status: e?.status });
+    }
   }
 
   private async readPath<P = Plain>(path: string): Promise<P> {

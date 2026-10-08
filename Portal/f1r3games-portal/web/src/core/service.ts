@@ -34,6 +34,8 @@ export interface Read {
   error?: string;
   blockHash: string;
   blockNumber: number | null;
+  /** The block's timestamp (ms), for games that keep time by the block (F1R3Ink D5). */
+  blockTimestamp?: number | null;
 }
 
 export interface PrepareRequest {
@@ -52,6 +54,8 @@ export interface Service {
   explore(template: string, args: { [k: string]: Typed }, game?: string): Promise<Read>;
   get(path: string): Promise<any>;
   fund(address: string): Promise<{ deployId: string; amount: number }>;
+  /** POST a signed request to a game's relay (F1R3Ink design §8). */
+  relay?(url: string, body: { message: string; publicKey: string; signature: string }): Promise<any>;
 }
 
 export class HttpService implements Service {
@@ -85,5 +89,11 @@ export class HttpService implements Service {
   }
   fund(address: string) {
     return this.call("POST", "/api/testnet/fund", { address }) as Promise<{ deployId: string; amount: number }>;
+  }
+  async relay(url: string, body: { message: string; publicKey: string; signature: string }) {
+    const r = await this.fetchImpl(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({ error: r.statusText }));
+    if (!r.ok) throw Object.assign(new Error(j.error ?? `${r.status} ${url}`), { status: r.status });
+    return j;
   }
 }

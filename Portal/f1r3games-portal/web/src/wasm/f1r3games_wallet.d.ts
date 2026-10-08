@@ -75,8 +75,10 @@ export function newInvitation(base_url: string, instance_id: string): string;
 
 /**
  * A fresh invitation key and its link: `{publicKey, link}`.
- * Open a message envelope (hex) addressed to the active key. The host passes
- * the hosted game's id and instance (F1R3Pix design R3). Returns {sender, text}.
+ * Open an envelope (hex) addressed to the active key. The host passes the
+ * hosted game's id and instance (F1R3Pix design R3). A message (version 1)
+ * answers {sender, text}; a sealed ink (version 2, F1R3Ink design §7) answers
+ * {kind: "ink", target, sid, seq, colour, key}, trying each unlabelled wrap.
  */
 export function openEnvelope(game: string, instance: string, envelope_hex: string): string;
 
@@ -111,6 +113,13 @@ export function setActive(address: string): void;
  * Returns `{deployer, signature}` (hex).
  */
 export function sign(origin: string, template: string, args_json: string, prepared_hex: string, instance: string | null | undefined, approved: boolean, now_ms: number): string;
+
+/**
+ * Sign a relay request (F1R3Ink design §8): the host composes `message`
+ * (JSON naming the hosted game, instance and relay URL). Returns
+ * {publicKey, signature} (hex).
+ */
+export function signRelay(message: string): string;
 
 export function unlockWithPasskey(credential_id: string, prf_output_hex: string): void;
 
@@ -148,6 +157,7 @@ export interface InitOutput {
     readonly review: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => [number, number, number, number];
     readonly setActive: (a: number, b: number) => [number, number];
     readonly sign: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number) => [number, number, number, number];
+    readonly signRelay: (a: number, b: number) => [number, number, number, number];
     readonly unlockWithPasskey: (a: number, b: number, c: number, d: number) => [number, number];
     readonly unlockWithPassphrase: (a: number, b: number) => [number, number];
     readonly __wbindgen_exn_store: (a: number) => void;

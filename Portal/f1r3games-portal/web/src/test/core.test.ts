@@ -9,6 +9,9 @@ import { loadWalletNode, pixManifest, R, startTestbed, type Testbed } from "./ha
 // The F1R3Pix client's sealing, so an envelope made exactly as the game makes it is opened by this wallet.
 // @ts-expect-error plain JavaScript module from the game client
 import { seal } from "../../../../../F1R3Pix/client/src/core/envelope.js";
+// F1R3Ink's sealed inks (version 2 envelopes, unlabelled wraps), made as its client makes them.
+// @ts-expect-error plain JavaScript module from the game client
+import { sealInk } from "../../../../../F1R3Ink/client/src/core/envelope.js";
 
 let tb: Testbed;
 let wasm: WalletWasm;
@@ -181,6 +184,25 @@ describe("the portal core against the real service and a verifying node", () => 
     p.wallet.openRate = 2;
     await host.dispatch("open", { envelope: env });
     expect((await host.dispatch("open", { envelope: env }))[1]).toBe("rate-limited");
+  });
+
+  it("opens an F1R3Ink sealed ink for a party and signs relay requests only for the active address", async () => {
+    const p = await boot();
+    const hex = (b: Uint8Array) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+    const other = "04" + "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8";
+    const { bytes, key } = sealInk({ game: "f1r3ink", instance: "inst1", target: "1111target", sid: p.wallet.address, seq: 2, parties: [other, p.wallet.publicKey], colour: 7 });
+    const ink = { id: "f1r3ink", name: "F1R3Ink", entry: "https://ink.example/", galleries: [], templates: [], capabilities: ["pay", "open", "relay"] };
+    const host = new GameHost(p, ink, "inst1", () => null, { openInvite: () => undefined });
+    expect(await host.dispatch("open", { envelope: hex(bytes) })).toEqual(["ok", { kind: "ink", target: "1111target", sid: p.wallet.address, seq: 2, colour: 7, key: hex(key) }]);
+    // Bound to its instance: the same envelope does not open elsewhere.
+    const elsewhere = new GameHost(p, ink, "inst2", () => null, { openInvite: () => undefined });
+    expect((await elsewhere.dispatch("open", { envelope: hex(bytes) }))[0]).toBe("err");
+    const m = (address: string) => JSON.stringify({ v: 1, game: "f1r3ink", instance: "inst1", relay: "https://r.example/api/relay/f1r3ink", op: "ink", params: {}, address, at: 1 });
+    const s = p.wallet.signRelay(m(p.wallet.address));
+    expect(s.publicKey).toBe(p.wallet.publicKey);
+    expect(s.signature).toMatch(/^30[0-9a-f]+$/);
+    expect(() => p.wallet.signRelay(m("1111PXDQTDEd4XNuX4YWoB6XeL7ssWvhePGD2XmkENkG5sHfAMW9Q"))).toThrow();
+    expect(() => p.wallet.signRelay("not a relay message")).toThrow();
   });
 
   it("accepts a template source read back with its escapes still in, but only if it matches the listed hash", async () => {

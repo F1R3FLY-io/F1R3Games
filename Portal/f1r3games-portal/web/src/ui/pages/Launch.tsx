@@ -11,6 +11,18 @@ const VIS: { v: Visibility; label: string; help: string }[] = [
   { v: "private", label: "Private", help: "Only people you invite can join." },
 ];
 
+/** F1R3Ink's default palette (design D4): sixteen colours told apart by number, not name. */
+const INK_PALETTE = ["#E6194B", "#F58231", "#FFE119", "#BFEF45", "#3CB44B", "#42D4F4", "#4363D8", "#911EB4",
+                     "#F032E6", "#FABED4", "#DCBEFF", "#9A6324", "#800000", "#000075", "#A9A9A9", "#FFFFFF"];
+/** Decay presets (design D5): a stripe loses 1/steps of its opacity each unit. */
+const INK_DECAY = [
+  { id: "evening", label: "An evening: gone in 2 hours", unit: 600_000, steps: 12 },
+  { id: "day", label: "A day: gone in 24 hours", unit: 3_600_000, steps: 24 },
+  { id: "week", label: "A week: gone in 7 days", unit: 21_600_000, steps: 28 },
+  { id: "season", label: "A season: gone in 90 days", unit: 86_400_000, steps: 90 },
+  { id: "never", label: "Never: stripes keep their colour", unit: 0, steps: 0 },
+];
+
 export function Launch() {
   const { id = "" } = useParams();
   const portal = usePortal();
@@ -46,6 +58,26 @@ export function Launch() {
     if (!Number.isInteger(messageLimit) || messageLimit < 1 || messageLimit > 65536) throw new Error("the message limit is 1 to 65536 bytes");
     return { meter: [n, d], bars, column: [1, column], capacity: beatCapacity, seating: beatSeating,
              scale: scaleKind ? [scaleKind, tonic] : null, tempo, seed: null, messageLimit };
+  };
+  // F1R3Ink round configuration (design v1 §5, D4–D9), fixed at creation.
+  const [inkCapacity, setInkCapacity] = useState(24);
+  const [inkPalette, setInkPalette] = useState("");
+  const [decay, setDecay] = useState("day");
+  const [minInterval, setMinInterval] = useState(60);
+  const [anonymous, setAnonymous] = useState(true);
+  const [anonMin, setAnonMin] = useState(5);
+  const [reciprocity, setReciprocity] = useState(false);
+  const inkConfig = () => {
+    const cols = inkPalette.split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase());
+    if (!Number.isInteger(inkCapacity) || inkCapacity < 3 || inkCapacity > 64) throw new Error("players must be 3 to 64");
+    if (cols.length && (cols.length < 2 || cols.length > 32 || cols.some((c) => !/^#[0-9A-F]{6}$/.test(c)) || new Set(cols).size !== cols.length))
+      throw new Error("the palette is 2 to 32 different colours written #RRGGBB");
+    if (!Number.isInteger(minInterval) || minInterval < 0 || minInterval > 86_400) throw new Error("the pause between inks is 0 to 86400 seconds");
+    if (!Number.isInteger(anonMin) || anonMin < 3 || anonMin > 64) throw new Error("anonymous ink needs at least 3 players");
+    if (!Number.isInteger(messageLimit) || messageLimit < 1 || messageLimit > 65536) throw new Error("the message limit is 1 to 65536 bytes");
+    const d = INK_DECAY.find((x) => x.id === decay)!;
+    return { capacity: inkCapacity, palette: cols.length ? cols : INK_PALETTE, decay: d.unit ? { unit: d.unit, steps: d.steps } : null,
+             minInterval: minInterval * 1000, anonymous, anonMin, reciprocity, messageLimit };
   };
   const pixConfig = () => {
     const cols = palette.split(/[\s,]+/).filter(Boolean).map((c) => c.toUpperCase());
@@ -148,6 +180,47 @@ export function Launch() {
               </label>
             </fieldset>
           )}
+          {g.id === "f1r3ink" && (
+            <fieldset>
+              <legend>The round</legend>
+              <label>
+                Players (3 to 64)
+                <input type="number" min={3} max={64} value={inkCapacity} onChange={(e) => setInkCapacity(Number(e.target.value))} />
+              </label>
+              <label>
+                Palette (optional, 2 to 32 colours such as #E6194B #3CB44B; empty means the sixteen defaults)
+                <input value={inkPalette} onChange={(e) => setInkPalette(e.target.value)} />
+              </label>
+              <label>
+                How fast ink fades unless it is refreshed
+                <select value={decay} onChange={(e) => setDecay(e.target.value)}>
+                  {INK_DECAY.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Pause before someone can change the same stripe again, in seconds
+                <input type="number" min={0} max={86400} value={minInterval} onChange={(e) => setMinInterval(Number(e.target.value))} />
+              </label>
+              <label className="radio">
+                <input type="checkbox" checked={anonymous} onChange={(e) => setAnonymous(e.target.checked)} />
+                <strong>Allow anonymous ink</strong> <span className="muted">Through the Cooperative's relay, which knows who inked whom; hidden from players and the chain.</span>
+              </label>
+              {anonymous && (
+                <label>
+                  Fewest players for anonymous ink
+                  <input type="number" min={3} max={64} value={anonMin} onChange={(e) => setAnonMin(Number(e.target.value))} />
+                </label>
+              )}
+              <label className="radio">
+                <input type="checkbox" checked={reciprocity} onChange={(e) => setReciprocity(e.target.checked)} />
+                <strong>Show to see</strong> <span className="muted">Players with private flags see others' flags only as overall spectra.</span>
+              </label>
+              <label>
+                Largest sealed message, in bytes
+                <input type="number" min={1} max={65536} value={messageLimit} onChange={(e) => setMessageLimit(Number(e.target.value))} />
+              </label>
+            </fieldset>
+          )}
           <label>
             Play allowance (phlo the game may spend without asking, for four hours)
             <input type="number" min={0} step={100000} value={budget} onChange={(e) => setBudget(Number(e.target.value))} />
@@ -159,7 +232,7 @@ export function Launch() {
               setError(null);
               try {
                 setBusy("Waiting for your approval…");
-                const config = g.id === "f1r3pix" ? pixConfig() : g.id === "f1r3beat" ? beatConfig() : {};
+                const config = g.id === "f1r3pix" ? pixConfig() : g.id === "f1r3beat" ? beatConfig() : g.id === "f1r3ink" ? inkConfig() : {};
                 const r = await portal.launch(id, visibility, config);
                 portal.enterGame(g, r.instanceId, budget);
                 setBusy("Waiting for the shard to include it…");

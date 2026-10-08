@@ -38,11 +38,16 @@ export interface WalletWasm {
   contactsDecrypt(hex: string): string;
   contactsImport(bookJson: string, format: string, text: string, now: number): string;
   openEnvelope(game: string, instance: string, envelopeHex: string): string;
+  signRelay(message: string): string;
 }
 
 export type Decision =
   | { kind: "prompt"; template: string; maxFee: number; summary: string }
   | { kind: "within"; template: string; maxFee: number; remainingAfter: number };
+
+export type OpenedEnvelope =
+  | { sender: string; text: string }
+  | { kind: "ink"; target: string; sid: string; seq: number; colour: number; key: string };
 
 export interface KeyInfo {
   address: string;
@@ -132,11 +137,19 @@ export class Wallet {
 
   /** Open a message envelope addressed to the active key. The host passes the
    *  game id and instance it is hosting (F1R3Pix design R3); games never do. */
-  openEnvelope(game: string, instance: string, envelopeHex: string, now = Date.now()): { sender: string; text: string } {
+  /** A message `{sender, text}`, or (F1R3Ink, version 2) a sealed ink
+   *  `{kind: "ink", target, sid, seq, colour, key}`. */
+  openEnvelope(game: string, instance: string, envelopeHex: string, now = Date.now()): OpenedEnvelope {
     this.opens = this.opens.filter((t) => now - t < 1000);
     if (this.opens.length >= this.openRate) throw Object.assign(new Error("too many envelopes opened at once; try again shortly"), { code: "rate-limited" });
     this.opens.push(now);
     return JSON.parse(this.w.openEnvelope(game, instance, envelopeHex));
+  }
+  /** Sign a relay request (F1R3Ink design §8) with the active key, under the
+   *  domain `f1r3games/relay/v1`. The wallet refuses a message naming any
+   *  other address, and the domain keeps the signature from being a deploy's. */
+  signRelay(message: string): { publicKey: string; signature: string } {
+    return JSON.parse(this.w.signRelay(message));
   }
   get unlocked() {
     return this.w.isUnlocked();

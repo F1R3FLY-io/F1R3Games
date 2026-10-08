@@ -19,8 +19,8 @@ export const PROTOCOL = 2;
  *  `gallery`, `playBody` and `counts` (F1R3Beat design §10) read public chain data about the
  *  game's own plays, for in-game galleries and crosses. */
 const BASE = new Set(["hello", "deploy", "read", "publishPlay", "linkPlays", "engage", "invite", "balance", "payments", "profiles", "gallery", "playBody", "counts"]);
-/** Declarable capabilities (F1R3Pix design §8). */
-export const CAPABILITIES = ["pay", "open"] as const;
+/** Declarable capabilities (F1R3Pix design §8; `relay`, F1R3Ink design §8). */
+export const CAPABILITIES = ["pay", "open", "relay"] as const;
 
 export interface HostHooks {
   openInvite(): void;
@@ -104,6 +104,19 @@ export class GameHost {
             if (e?.code === "rate-limited") throw new CapError("rate-limited", e.message);
             const m = String(e?.message ?? e);
             throw new CapError(/not addressed/.test(m) ? "not-addressed" : "corrupt", m);
+          }
+        });
+      case "relay":
+        // R5: signed under the relay domain, posted only to the relay the registered manifest names.
+        return attempt("relay", async () => {
+          if (typeof p.op !== "string" || !/^[a-z]{1,32}$/.test(p.op)) throw new Error("op must be a short lowercase name");
+          const params = p.params ?? {};
+          if (typeof params !== "object" || Array.isArray(params) || JSON.stringify(params).length > 4096) throw new Error("params must be an object of at most 4 KiB");
+          try {
+            return await P.relay(this.game, this.instance, p.op, params as Plain);
+          } catch (e: any) {
+            const code = e?.code === "no-relay" || e?.code === "allowance" ? e.code : "relay";
+            throw new CapError(code, e?.message ?? String(e));
           }
         });
       case "balance":
